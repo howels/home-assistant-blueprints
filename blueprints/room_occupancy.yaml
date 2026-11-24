@@ -1,0 +1,511 @@
+blueprint:
+  name: Room occupancy lighting
+  author: howels
+  domain: automation
+  source_url: https://github.com/howels/home-assistant-blueprints/blob/main/blueprints/room_occupancy.yaml
+  description: >-
+    Restores a room's lighting when someone enters and saves it, then turns the
+    lights off, when the room has been clear for a set time. One automation per
+    room.
+
+
+    Entry. An entry occurs when an entry sensor is on while the saved record
+    says the room is vacated, that is, when a sensor turns on, or when a vacancy
+    run sets vacated while a sensor is already on. It restores the lights only
+    if the time is inside the active hours, at least one selected person is
+    home, and the extra entry conditions pass. If a snapshot is saved for the
+    room, scene.apply applies it. Otherwise, if the runtime scene
+    scene.<room>_scene_tmp exists, it is turned on. Otherwise the default scene
+    is turned on, and after the settle time the room is snapshotted into
+    scene.<room>_scene_tmp. The room counts as restored only if a light, switch
+    or fan among the entities to save is on within 5 seconds. If not, for
+    example because the lights were unavailable, vacated stays true and the next
+    entry tries again. An entry refused by the hours or the people check is
+    tried again when the active hours open and when a selected person arrives
+    home, if a sensor is on then.
+
+
+    Vacancy. When no entry sensor and no hold-only sensor is on, and at least
+    one reports off, for the clear delay, the automation reads the states of the
+    snapshot entities. If any light, switch or fan among them is on and the
+    snapshot conditions pass, it saves those states, recreates
+    scene.<room>_scene_tmp from them, and turns the lights off. The extra
+    vacant actions run last.
+
+
+    Why the order holds. The automation runs in queued mode. A second entry
+    cannot start until the vacancy run has saved the snapshot and finished
+    turning the lights off. The entry then applies the snapshot that run saved.
+    The snapshot is applied from saved data, not from the runtime scene entity.
+    scene.create replaces an existing scene by removing and re-adding it, so the
+    entity can be missing for a moment.
+
+
+    Vacated. The saved record holds a vacated flag. A vacancy run sets it true
+    and a successful entry sets it false. Only an entry while vacated is true
+    restores the lights and runs the entry actions, so a sensor that flickers
+    while someone is in the room does not overwrite manual changes. With no
+    record for the room, vacated counts as true.
+
+
+    Missed vacancy. A template trigger does not fire if its template is already
+    true when the automation loads. Every 10 minutes the automation checks
+    whether vacated is false and every sensor has been clear for longer than the
+    clear delay. If so it runs the vacancy sequence. When vacated is true it does
+    nothing, so lights you turned on in an empty room stay on.
+
+
+    Variables. Each run reads the saved record and the sensors when it leaves the
+    queue, not when its trigger fired.
+
+
+    Persistence. The snapshot and the vacated flag are written by firing the
+    event occupancy_room_update. A trigger-based template sensor
+    (sensor.occupancy_scene_store by default, defined in configuration.yaml)
+    keeps them in its attributes and Home Assistant restores them after a
+    restart. On Home Assistant start, and after scene.reload, the automation
+    recreates scene.<room>_scene_tmp from the saved snapshot. Home Assistant
+    writes restored state to disk every 15 minutes and on a clean stop, so a
+    power loss can lose the last 15 minutes of changes. Without the store sensor
+    the automation still works but forgets everything at restart, and every
+    entry restores the lights.
+
+
+    To forget a room's snapshot, fire occupancy_room_update with the room slug,
+    an empty snapshot and vacated true.
+  input:
+    room_section:
+      name: Room
+      icon: mdi:door
+      collapsed: false
+      input:
+        room_name:
+          name: Room name
+          description: >-
+            Names the runtime scene and the saved record. Study gives
+            scene.study_scene_tmp. The name is converted to a slug.
+          selector:
+            text: {}
+        snapshot_entities:
+          name: Entities to save and restore
+          description: >-
+            Lights, switches, fans, selects (for example WLED presets) and
+            numbers. Do not list groups. Entities that do not exist or are
+            unavailable are skipped when saving.
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: [light, switch, fan, select, number]
+        default_scene:
+          name: Default scene
+          description: >-
+            Applied on entry when the room has no saved snapshot and no runtime
+            scene. Leave empty to leave the lights alone in that case.
+          default: ""
+          selector:
+            entity:
+              filter:
+                - domain: scene
+        settle_time:
+          name: Settle time
+          description: >-
+            Seconds to wait after the default scene before the room is
+            snapshotted into the runtime scene.
+          default: 5
+          selector:
+            number:
+              min: 0
+              max: 60
+              step: 1
+              unit_of_measurement: s
+    sensors_section:
+      name: Sensors
+      icon: mdi:motion-sensor
+      collapsed: false
+      input:
+        sensors:
+          name: Entry sensors
+          description: >-
+            Presence or motion sensors. A change from clear to on starts
+            occupancy. They also hold the room occupied while on.
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: binary_sensor
+        hold_only_sensors:
+          name: Hold-only sensors
+          description: >-
+            Sensors that keep the room occupied while on but never start
+            occupancy, for example a millimetre-wave sensor that reports ghosts.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: binary_sensor
+        clear_delay:
+          name: Clear delay
+          description: >-
+            How long every sensor must be clear before the room counts as
+            vacant.
+          default:
+            hours: 0
+            minutes: 2
+            seconds: 0
+          selector:
+            duration: {}
+    conditions_section:
+      name: When to restore the lights
+      icon: mdi:clock-outline
+      collapsed: true
+      input:
+        active_after:
+          name: Active from
+          description: >-
+            Entry restores the lights only between these times. The times may
+            cross midnight. Equal times mean always.
+          default: "00:00:00"
+          selector:
+            time: {}
+        active_before:
+          name: Active until
+          default: "00:00:00"
+          selector:
+            time: {}
+        people:
+          name: People
+          description: >-
+            Entry restores the lights only if at least one of these is home.
+            Leave empty to ignore who is home.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: [person, device_tracker]
+        entry_conditions:
+          name: Extra entry conditions
+          description: All must pass for an entry to restore the lights.
+          default: []
+          selector:
+            condition: {}
+    lights_off_section:
+      name: Saving and turning off
+      icon: mdi:lightbulb-off-outline
+      collapsed: true
+      input:
+        snapshot_conditions:
+          name: Snapshot conditions
+          description: >-
+            All must pass for the vacancy run to overwrite the saved snapshot.
+            If any fails the saved snapshot is kept. The lights are turned off
+            either way. Use this to avoid saving while an effect engine such as
+            LedFX controls the lights.
+          default: []
+          selector:
+            condition: {}
+        turn_off_target:
+          name: Turn off
+          description: >-
+            Target for light.turn_off on vacancy. Leave empty to turn off the
+            lights among the entities to save and restore.
+          default: {}
+          selector:
+            target:
+              entity:
+                domain: light
+    actions_section:
+      name: Extra actions
+      icon: mdi:play-box-outline
+      collapsed: true
+      input:
+        on_enter_actions:
+          name: Actions on entry
+          description: Run after the lights are restored, only for an entry that restores them.
+          default: []
+          selector:
+            action: {}
+        on_vacant_actions:
+          name: Actions on vacancy
+          description: Run after the lights are turned off.
+          default: []
+          selector:
+            action: {}
+    store_section:
+      name: Store
+      icon: mdi:database
+      collapsed: true
+      input:
+        store:
+          name: Store sensor
+          description: >-
+            Trigger-based template sensor that keeps the snapshots. See the
+            description of this blueprint.
+          default: sensor.occupancy_scene_store
+          selector:
+            entity:
+              filter:
+                - domain: sensor
+
+mode: queued
+max: 10
+max_exceeded: silent
+
+trigger_variables:
+  entry_sensors: !input sensors
+  hold_sensors: !input hold_only_sensors
+  people: !input people
+  store: !input store
+  room_name: !input room_name
+
+triggers:
+  # An entry sensor is on while the saved record says the room is vacated. The
+  # edge occurs when a sensor turns on, and when a vacancy run sets vacated
+  # while a sensor is already on. With no saved record vacated counts as true.
+  - trigger: template
+    id: enter
+    value_template: >-
+      {% set rec = (state_attr(store, 'rooms') or {}).get(room_name | slugify) or {} %}
+      {{ rec.get('vacated', true)
+         and entry_sensors | select('is_state', 'on') | list | count > 0 }}
+  # No sensor on and at least one reporting off, for the clear delay. A sensor
+  # that is unavailable counts as neither, so it cannot make the room vacant.
+  - trigger: template
+    id: vacate
+    value_template: >-
+      {% set watched = entry_sensors + hold_sensors %}
+      {{ watched | select('is_state', 'on') | list | count == 0
+         and watched | select('is_state', 'off') | list | count > 0 }}
+    for: !input clear_delay
+  # Entry is refused outside the active hours or with nobody home. Check again
+  # when the hours open and when someone arrives.
+  - trigger: time
+    id: gate
+    at: !input active_after
+  - trigger: template
+    id: gate
+    value_template: >-
+      {{ people | select('is_state', 'home') | list | count > 0 }}
+  # A template trigger does not fire if its template is already true when the
+  # automation loads, and a run can be dropped from a full queue. This catches a
+  # missed vacancy. The condition below stops it logging a run otherwise.
+  - trigger: time_pattern
+    id: recheck
+    minutes: "/10"
+  - trigger: homeassistant
+    event: start
+    id: restore_scene
+  - trigger: event
+    event_type: scene_reloaded
+    id: restore_scene
+
+variables:
+  room_name: !input room_name
+  room: "{{ room_name | slugify }}"
+  scene_id: "{{ room }}_scene_tmp"
+  store: !input store
+  entry_sensors: !input sensors
+  hold_sensors: !input hold_only_sensors
+  snapshot_entities: !input snapshot_entities
+  turn_off_target: !input turn_off_target
+  people: !input people
+  default_scene: !input default_scene
+  settle_time: !input settle_time
+  clear_delay: !input clear_delay
+  clear_seconds: >-
+    {{ clear_delay.get('days', 0) * 86400 + clear_delay.get('hours', 0) * 3600
+       + clear_delay.get('minutes', 0) * 60 + clear_delay.get('seconds', 0)
+       + clear_delay.get('milliseconds', 0) / 1000 }}
+  # Evaluated when the trigger fires, before the run waits in the queue. Only
+  # the recheck filter below uses it. The run recomputes everything it acts on.
+  missed_vacancy: >-
+    {% set rec = (state_attr(store, 'rooms') or {}).get(room) or {} %}
+    {% set st = expand(entry_sensors + hold_sensors) %}
+    {% set off = st | selectattr('state', 'eq', 'off') | list %}
+    {{ not rec.get('vacated', true)
+       and st | selectattr('state', 'eq', 'on') | list | count == 0
+       and off | count > 0
+       and (now() - (off | map(attribute='last_changed') | max)).total_seconds() >= clear_seconds }}
+
+conditions:
+  - condition: template
+    value_template: "{{ trigger.id != 'recheck' or missed_vacancy }}"
+
+actions:
+  # Read the saved record and the sensors now that this run has left the queue.
+  # The previous run has finished and has fired its update.
+  - variables:
+      record: "{{ (state_attr(store, 'rooms') or {}).get(room) or {} }}"
+      saved: "{{ record.get('snapshot') or {} }}"
+      vacated: "{{ record.get('vacated', true) }}"
+      entry_on: "{{ entry_sensors | select('is_state', 'on') | list | count > 0 }}"
+      all_clear: >-
+        {% set watched = entry_sensors + hold_sensors %}
+        {{ watched | select('is_state', 'on') | list | count == 0
+           and watched | select('is_state', 'off') | list | count > 0 }}
+      clear_age: >-
+        {% set off = expand(entry_sensors + hold_sensors) | selectattr('state', 'eq', 'off') | list %}
+        {{ (now() - (off | map(attribute='last_changed') | max)).total_seconds() if off else 0 }}
+  - choose:
+      # Recreate scene.<room>_scene_tmp for other automations.
+      - alias: Recreate the runtime scene from the saved snapshot
+        conditions:
+          - condition: trigger
+            id: restore_scene
+          - condition: template
+            value_template: "{{ saved | length > 0 }}"
+        sequence:
+          - action: scene.create
+            data:
+              scene_id: "{{ scene_id }}"
+              entities: "{{ saved }}"
+
+      # Someone is in a room that the vacancy run emptied.
+      - alias: Entry
+        conditions:
+          - condition: template
+            value_template: >-
+              {{ trigger.id == 'enter' or (trigger.id == 'gate' and entry_on) }}
+          - condition: template
+            value_template: "{{ vacated }}"
+          - condition: time
+            after: !input active_after
+            before: !input active_before
+          - condition: template
+            value_template: >-
+              {{ people | length == 0
+                 or people | select('is_state', 'home') | list | count > 0 }}
+          - condition: and
+            conditions: !input entry_conditions
+        sequence:
+          - choose:
+              - alias: Apply the saved snapshot
+                conditions:
+                  - condition: template
+                    value_template: "{{ saved | length > 0 }}"
+                sequence:
+                  - action: scene.apply
+                    continue_on_error: true
+                    data:
+                      entities: "{{ saved }}"
+              - alias: Turn on the runtime scene
+                conditions:
+                  - condition: template
+                    value_template: "{{ state_attr('scene.' ~ scene_id, 'entity_id') is not none }}"
+                sequence:
+                  - action: scene.turn_on
+                    continue_on_error: true
+                    target:
+                      entity_id: "scene.{{ scene_id }}"
+              - alias: Apply the default scene and snapshot it
+                conditions:
+                  - condition: template
+                    value_template: "{{ default_scene | length > 0 }}"
+                sequence:
+                  - action: scene.turn_on
+                    continue_on_error: true
+                    target:
+                      entity_id: "{{ default_scene }}"
+                  - delay:
+                      seconds: "{{ settle_time | int(0) }}"
+                  - action: scene.create
+                    data:
+                      scene_id: "{{ scene_id }}"
+                      snapshot_entities: "{{ snapshot_entities }}"
+          # The room counts as restored only if a light, switch or fan among the
+          # snapshot entities is on. If the lights were unavailable, or no scene
+          # is configured, vacated stays true and the next entry tries again.
+          - wait_template: >-
+              {{ snapshot_entities | select('match', '^(light|switch|fan)[.]')
+                 | select('is_state', 'on') | list | count > 0 }}
+            timeout: 5
+            continue_on_timeout: true
+          - event: occupancy_room_update
+            event_data:
+              room: "{{ room }}"
+              vacated: "{{ not wait.completed }}"
+          - sequence: !input on_enter_actions
+
+      # Every sensor has been clear for the clear delay.
+      - alias: Vacancy
+        conditions:
+          - condition: template
+            value_template: >-
+              {{ trigger.id == 'vacate'
+                 or (trigger.id == 'recheck' and not vacated and clear_age >= clear_seconds) }}
+          # A queued run can start after someone has come back.
+          - condition: template
+            value_template: "{{ all_clear }}"
+        sequence:
+          # Read every state in one step. Nothing awaits between this and the
+          # event that saves it.
+          - variables:
+              snapshot_lights: "{{ snapshot_entities | select('match', '^light[.]') | list }}"
+              lights_on: >-
+                {{ snapshot_entities | select('match', '^(light|switch|fan)[.]')
+                   | select('is_state', 'on') | list | count }}
+              # Keeps what scene.apply needs: the state, and for a light the
+              # brightness, effect, colour mode and the one colour attribute
+              # that matches that mode. Other colour attributes are derived.
+              snapshot: >-
+                {% set colour = {'color_temp': 'color_temp_kelvin', 'hs': 'hs_color',
+                                 'rgb': 'rgb_color', 'rgbw': 'rgbw_color',
+                                 'rgbww': 'rgbww_color', 'xy': 'xy_color'} %}
+                {% set ns = namespace(all={}) %}
+                {% for e in snapshot_entities %}
+                  {% set st = states(e) %}
+                  {% if st not in ['unavailable', 'unknown'] %}
+                    {% set mode = state_attr(e, 'color_mode') %}
+                    {% set keep = ['brightness', 'effect', 'color_mode', 'percentage', 'preset_mode']
+                                  + ([colour[mode]] if mode in colour else []) %}
+                    {% set item = namespace(v={'state': st}) %}
+                    {% for k in keep %}
+                      {% set v = state_attr(e, k) %}
+                      {% if v is not none %}
+                        {% set item.v = item.v | combine({k: v}) %}
+                      {% endif %}
+                    {% endfor %}
+                    {% set ns.all = ns.all | combine({e: item.v}) %}
+                  {% endif %}
+                {% endfor %}
+                {{ ns.all }}
+          - if:
+              - condition: template
+                value_template: "{{ lights_on > 0 and snapshot | length > 0 }}"
+              - condition: and
+                conditions: !input snapshot_conditions
+            then:
+              - event: occupancy_room_update
+                event_data:
+                  room: "{{ room }}"
+                  snapshot: "{{ snapshot }}"
+                  saved_at: "{{ now().isoformat() }}"
+                  vacated: true
+              - action: scene.create
+                data:
+                  scene_id: "{{ scene_id }}"
+                  entities: "{{ snapshot }}"
+            else:
+              - event: occupancy_room_update
+                event_data:
+                  room: "{{ room }}"
+                  vacated: true
+          - if:
+              - condition: template
+                value_template: "{{ turn_off_target | length > 0 }}"
+            then:
+              - action: light.turn_off
+                continue_on_error: true
+                target: !input turn_off_target
+            else:
+              - if:
+                  - condition: template
+                    value_template: "{{ snapshot_lights | length > 0 }}"
+                then:
+                  - action: light.turn_off
+                    continue_on_error: true
+                    target:
+                      entity_id: "{{ snapshot_lights }}"
+          - sequence: !input on_vacant_actions
