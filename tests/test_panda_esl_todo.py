@@ -124,7 +124,7 @@ async def test_emoji_is_drawn_as_images_and_text_trimmed(hass):
     t = texts(data)
     assert "Black bin day" in t and "Brown bin day" in t
     assert t.count("Tomorrow") == 2
-    assert images(data) == ["26AB", "1F6AE", "dither:disc:22", "1F6AE"]
+    assert images(data) == ["26AB", "1F6AE", "dither:disc:20", "1F6AE"]
     in_canvas(data, 360, 240)
 
 
@@ -187,7 +187,7 @@ async def test_brown_is_not_dithered_when_switched_off(hass):
     assert images(data) == ["1F7E4", "1F7EB"]
 
 
-@pytest.mark.parametrize("size,h,n", [("256x128", 128, 12), ("296x152", 152, 14), ("360x240", 240, 22), ("400x300", 300, 28)])
+@pytest.mark.parametrize("size,h,n", [("256x128", 128, 10), ("296x152", 152, 12), ("360x240", 240, 20), ("400x300", 300, 24)])
 async def test_brown_dither_matches_the_emoji_size(hass, size, h, n):
     install(hass, "panda_esl_todo.yaml")
     calls = register_write(hass)

@@ -17,12 +17,27 @@ SIZES = range(10, 37, 2)
 TRANSPARENT, BLACK, RED = 0, 1, 2
 
 
+# Share of the 72 pixel OpenMoji canvas that the coloured shape covers: 58 of 72 for a circle
+# (26AB, 1F7E4) and 50 of 72 for a square (1F7EB). The substitute covers the same share, so that a
+# brown circle has the same diameter as the black circle drawn from the OpenMoji picture.
+COVER = {"disc": 58 / 72, "square": 50 / 72}
+
+
 def shape_mask(shape, n):
+    d = round(n * COVER[shape])
+    if (d - n) % 2:
+        d -= 1
+    off = (n - d) // 2
     c = (n - 1) / 2
-    r = n / 2 - 0.25
-    if shape == "square":
-        return [[True] * n for _ in range(n)]
-    return [[(x - c) ** 2 + (y - c) ** 2 <= r * r for x in range(n)] for y in range(n)]
+    r = d / 2 - 0.25
+    inside = [[False] * n for _ in range(n)]
+    for y in range(n):
+        for x in range(n):
+            if shape == "square":
+                inside[y][x] = off <= x < off + d and off <= y < off + d
+            else:
+                inside[y][x] = (x - c) ** 2 + (y - c) ** 2 <= r * r
+    return inside
 
 
 def make(shape, n):

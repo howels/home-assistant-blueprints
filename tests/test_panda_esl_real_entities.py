@@ -138,5 +138,5 @@ async def test_agenda_with_real_entities(hass):
     assert [x for x in t if x in {"Stand-up", "Bin day", "Pay bill", "Black bin", "Brown bin", "Done already"}] == [
         "Stand-up", "Bin day", "Pay bill", "Black bin", "Brown bin",
     ]
-    assert images(data) == ["1F4C5", "26AB", "dither:disc:22"]
+    assert images(data) == ["1F4C5", "26AB", "dither:disc:20"]
     in_canvas(data, 360, 240)

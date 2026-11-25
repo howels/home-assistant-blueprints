@@ -94,7 +94,9 @@ async def test_events_then_divider_then_tasks(hass):
     assert summaries(data, {"Review", "Team stand-up", "Bin day", "Pay tax", "Book dentist", "Milk"}) == [
         "Review", "Team stand-up", "Bin day", "Pay tax", "Book dentist", "Milk",
     ]
-    assert {"Now", "Tomorrow", "Today"} <= set(t)
+    # Time today, short day name for later days, no day for an item due today.
+    assert {"Now", "14:00", "Thu", "Sun 22"} <= set(t)
+    assert not {"Tom", "Tomorrow", "Today"} & set(t)
     lines = [e for e in visible(data) if e["type"] == "line"]
     assert len(lines) == 1
     boxes = [e for e in visible(data) if e["type"] == "rectangle" and e.get("width") == 2]
@@ -108,17 +110,39 @@ async def test_red_marks_today_events_and_overdue_tasks(hass):
     calls, _ = await setup(hass)
     _, data = await run(hass, calls)
     red = [e["value"] for e in data["payload"] if e.get("color") == "red"]
-    # Now and 14:00 stand-up start today; the dentist is due today, so black; the tax is overdue.
-    assert red == ["Now", "14:00", "Sun 22 Nov"]
+    # Now and 14:00 start today. The dentist is due today and has no label. The tax is overdue.
+    assert red == ["Now", "14:00", "Sun 22"]
 
 
-async def test_text_is_aligned_across_both_lists(hass):
+async def test_day_name_is_at_the_start_of_a_later_event(hass):
+    now = dt_util.now()
+    ev = {"calendar.work": {"events": [
+        {"start": (now + timedelta(days=1, hours=-3)).isoformat(), "end": (now + timedelta(days=1)).isoformat(), "summary": "Dentist"},
+        {"start": (now + timedelta(days=9)).date().isoformat(), "end": (now + timedelta(days=10)).date().isoformat(), "summary": "Far"},
+    ]}}
+    calls, _ = await setup(hass, ev=ev, td={t: {"items": []} for t in TODO}, inputs={"days_ahead": 14})
+    _, data = await run(hass, calls)
+    assert "Thu 09:00" in texts(data)
+    assert "Fri 04" in texts(data)  # more than a week ahead: day name and date
+
+
+async def test_event_and_task_text_each_align_in_their_own_column(hass):
     calls, _ = await setup(hass)
     _, data = await run(hass, calls)
     xs = {e["value"]: e["x"] for e in visible(data) if e["type"] == "text" and e.get("anchor") == "lm"}
-    assert xs["Review"] == xs["Milk"] == xs["Bin day"]
+    assert xs["Review"] == xs["Team stand-up"] == xs["Bin day"]
+    assert xs["Pay tax"] == xs["Book dentist"] == xs["Milk"]
     box = [e for e in visible(data) if e["type"] == "rectangle" and e.get("width") == 2][0]
-    assert box["x_end"] < xs["Milk"]
+    assert xs["Sun 22"] == box["x_end"] + 4  # the day name follows the checkbox
+
+
+async def test_checkbox_is_close_to_the_text_when_no_item_has_a_day(hass):
+    td = {"todo.shopping": {"items": [{"summary": "Milk", "uid": "1", "status": "needs_action"}]}}
+    calls, _ = await setup(hass, td=td)
+    _, data = await run(hass, calls)
+    box = [e for e in visible(data) if e["type"] == "rectangle" and e.get("width") == 2][0]
+    milk = [e for e in visible(data) if e["type"] == "text" and e["value"] == "Milk"][0]
+    assert milk["x"] - box["x_end"] <= 8
 
 
 async def test_events_only_has_no_divider(hass):
@@ -193,7 +217,7 @@ async def test_emoji_style_and_brown_dither(hass):
     assert icons(data) == []
     names = images(data)
     assert names[0] == "1F4C5"  # header glyph
-    assert names[1:] == ["26AB", "dither:disc:22"]
+    assert names[1:] == ["26AB", "dither:disc:20"]
     assert {"Black bin day", "Brown bin day"} <= set(texts(data))
     in_canvas(data, 360, 240)
 
@@ -241,3 +265,51 @@ async def test_state_change_writes(hass, entity, state):
     hass.states.async_set(entity, state)
     await pump()
     assert len(calls) == 1
+
+
+async def test_long_summary_wraps_when_rows_are_spare(hass):
+    now = dt_util.now()
+    long = "El in the office (book keeping and more)"
+    ev = {"calendar.work": {"events": [
+        {"start": (now + timedelta(hours=1)).isoformat(), "end": (now + timedelta(hours=2)).isoformat(), "summary": long},
+        {"start": (now + timedelta(hours=3)).isoformat(), "end": (now + timedelta(hours=4)).isoformat(), "summary": "Second"},
+    ]}}
+    td = {"todo.shopping": {"items": [{"summary": "Milk", "uid": "1", "status": "needs_action"}]}}
+    calls, _ = await setup(hass, ev=ev, td=td)
+    _, data = await run(hass, calls)
+    first = [e for e in visible(data) if e["type"] == "text" and e["value"] == "El in the office (book"][0]
+    rest = [e for e in visible(data) if e["type"] == "text" and e["value"] == "keeping and more)"][0]
+    assert rest["x"] == first["x"]
+    assert rest["y"] > first["y"]
+    second = [e for e in visible(data) if e["type"] == "text" and e["value"] == "Second"][0]
+    assert second["y"] > rest["y"]  # the next row moves down
+    milk = [e for e in visible(data) if e["type"] == "text" and e["value"] == "Milk"][0]
+    assert milk["y"] > second["y"]
+    in_canvas(data, 360, 240)
+
+
+async def test_long_summary_is_cut_when_no_row_is_spare(hass):
+    now = dt_util.now()
+    long = "El in the office (book keeping and the rest of the day)"
+    ev = {"calendar.work": {"events": [
+        {"start": (now + timedelta(hours=1 + i)).isoformat(), "end": (now + timedelta(hours=2 + i)).isoformat(), "summary": long if i == 0 else f"Event {i}"}
+        for i in range(9)
+    ]}}
+    calls, _ = await setup(hass, ev=ev, td={t: {"items": []} for t in TODO})
+    _, data = await run(hass, calls)
+    cut = [x for x in texts(data) if x.startswith("El in")]
+    assert len(cut) == 1 and cut[0].endswith("…")
+
+
+async def test_emoji_do_not_overlap_and_sit_before_the_text(hass):
+    now = dt_util.now()
+    ev = {"calendar.work": {"events": [
+        {"start": (now + timedelta(hours=1)).isoformat(), "end": (now + timedelta(hours=2)).isoformat(), "summary": "Bob \U0001F43E\U0001F496 and Donna"}
+    ]}}
+    calls, _ = await setup(hass, ev=ev, td={t: {"items": []} for t in TODO})
+    _, data = await run(hass, calls)
+    pics = [e for e in visible(data) if e["type"] == "dlimg"]
+    text = [e for e in visible(data) if e["type"] == "text" and e["value"] == "Bob and Donna"][0]
+    assert pics[0]["x"] + pics[0]["xsize"] == pics[1]["x"]  # no gap between emoji
+    assert text["x"] - (pics[1]["x"] + pics[1]["xsize"]) == 3
+    assert pics[0]["xsize"] == 20

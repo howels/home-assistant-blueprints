@@ -20,12 +20,15 @@ blueprint:
     reads "+N more".
 
 
-    An event row has a time column and the summary. The time column shows the
-    time for events today, Tom and the time for tomorrow, and the weekday and
-    time for later days. All-day events show Today, Tomorrow, or the weekday.
-    An event in progress shows Now. Events that start today are drawn in red.
-    An item row has a checkbox, the summary, and the due date. A due date in
-    the past is drawn in red with its date. Today and Tomorrow are written out.
+    An event row has a time column and the summary. An event today shows its
+    time, drawn in red, or Now when it is in progress. An event on a later day
+    starts with the short day name, such as Thu 09:00. An all-day event shows
+    Today or the short day name. An item row has a checkbox, the summary, and
+    the due day. An item due today has no day. An item due later starts with
+    the short day name. An item that is overdue starts with the day name and
+    the date, in red. The text of a row that is too long for one line wraps to
+    a second line when the panel has unused rows. Otherwise the text is cut
+    with an ellipsis.
 
 
     The automation runs at Home Assistant start, when a calendar or to-do
@@ -258,35 +261,35 @@ variables:
     "1F7EB": square
   dither_png:
     disc:
-      "10": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKAgMAAADwXCcuAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAADFJREFUeNpjYAxhYGIVZGARNrnNHPX8L8tnh+8svGdfsXx2+M78iv8oA+tMBub/7NcA8scON9V4+dMAAAAASUVORK5CYII="
-      "12": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAwAAAAMAgMAAAArG7R0AAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAADlJREFUeNpjYAhlYGa1lGURMf7NzMX/nMXZmIGF9+x/ls8ODCy8Z/8zP4sSZebif8703vgNA0MoAwAUZg0oEX+KYwAAAABJRU5ErkJggg=="
-      "14": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAAOAgMAAABiJsVCAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAEpJREFUeNpjYBB1YGBhDHzHwMRi7MrALML/nJeF2ZjhFmMaA8Mrls8ODN9ZeM/CWHt5GW6xMBsz3GJ5e/b/Aabfn/UZmBlevnkAAGWfFstck5lTAAAAAElFTkSuQmCC"
-      "16": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQAgMAAABinRfyAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAE9JREFUeNpjYGANYGBhCORnYGF0ZrjNzCb+/C+LsDHDb5a/Zxn+sTgbMzCw8J5l+M/y2QHKYpRsgMm+N2b4zvLnLMMtpv+f9Q8wM9xkvgEAdAwbHCCrK7AAAAAASUVORK5CYII="
-      "18": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABIAAAASAgMAAAAroGbEAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAGFJREFUeNpFyrsJgDAUQNEb8ywDgr1LZAHBFYIjOJRTuIAjpJe4gQgpLCz8xELB7hQHlANNW1STqIZjkNyTkNLCLJcHRFsIqgMW2WrYxfjfo4Hwnu9HC72cnpssRbsCysEDu8Idch7sRAIAAAAASUVORK5CYII="
-      "20": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUAgMAAADw5/WeAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAGdJREFUeNpFyrENwjAURdFr+7UpXFBkhbS/okMKbED2yTaUrJAF/hyWkBAFpYVNgRS6UxxggcghX4mc7UIKx1IGyWBSdmhKBlUfh6bZAA0OXe/T7jCu//P7T4eHqsFN3elb5G4vgAW+P8UfJ+jaO9UAAAAASUVORK5CYII="
-      "22": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABYAAAAWAgMAAAC52oSoAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAHNJREFUeNpNzLEJwlAYAOEv5E8ZENRJ3gJZQbBxgWxkIw7hAhnhLRAbW2ORwsIiaGwMWB7cHbYNodqNhH0yXaKos42IhHMUmVmsE67xzhBlQl+0MMSzwSvq/E9djf5nLt2YcFqeU2ISc7cyoDocKX3uj5svhD4klnm9eBUAAAAASUVORK5CYII="
-      "24": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYAgMAAACdGdVrAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAHtJREFUeNpNzrsJwmAYRuEn5ksZUbFxihRZQHABxYWcw10EF/gX0MbaW5PCwkssopDywHteDooluWw9GZ7CdKHah1XSiqzGMYqEUbQ1HjFO+ERe4xnvjhY1RJnQRjPvUTbb9Jc/75Zw/n++Eg7RNnO2YVe6G7g01ZUu8Aszqyl4kvQWswAAAABJRU5ErkJggg=="
-      "26": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABoAAAAaAgMAAADUJKRdAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAINJREFUeNp1z6ENwlAYReGv8CObgERisW+BJh2BwDwMgsdAUodlgWcRjNCEICoQDRQDOOQV55xcTNYYK1azxUWImoPCZkrbRFGjb0LGS0SCXcwyVDFOcI1nBlEnWEaZoY2ugse/Xcy3sP/xX98tYzhHn9D79Yeu4iQcS0NjpO/SHZ8fb8+LLAlaVujEAAAAAElFTkSuQmCC"
-      "28": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAcAgMAAAAPYzcHAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAIpJREFUeNp9zTFqAlEABuFvs3/KBSWSQ6RJ8S4geAav4Dk8iL2NxYJ1IBd4d0htAhYWKR66KQJCmpRTzExPt37+ENYzxOOKNsa8shCrgl26oWKZFHhJV+GUpwIt1wq39L/cbcCUyxJkqP/z2/DHv/fOBb7vv1Zgn6lieo/jlia+KicP2rm8jsLBJz+Uri+HmR5l0QAAAABJRU5ErkJggg=="
-      "30": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAB4AAAAeAgMAAABGXkYxAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAKNJREFUeNp9zSFOA0EYgNG33b8CsQkNqeACCEzFXGATapG9D+eAAyBBYkj2AuOb9gaEtqIJFS0MYhLqsE98X4vFzZIR08m0JzTzZDYI4y4rhKuE9RDuMy5Fk+D4GuMMRZQEnmKSQR9tlVV8VxF3VW6jq/IR+x4c/pHm+gE8nzt/5U29D+f7KcOPKPseB+G9w0rYJTwKp8yWkfKSZp+0fF2s3/gFcyU3OPKFmRwAAAAASUVORK5CYII="
-      "32": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgAgMAAAAOFJJnAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAJ5JREFUeNqFzqENwlAUheG/9DTBNCGBShgA+wSWBXA1LMBQLICkDtUR6pswQFMQFRWIB32I26QJBvsl/7kXIMuBGJLjfFMjyB3vgphk1zTtuhYrB/hCHCogoMgBcBcVAEgmW0UmDy1NvD4mg+JRopNFQf1+zNPqv5Tpz8603Jm8puve5DJ9GGzoLMoUGBCdA24IXy4IBTO49u5pQZYDX9K5N32Ui9DuAAAAAElFTkSuQmCC"
-      "34": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACIAAAAiAgMAAABHKeNRAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAALZJREFUeNp90CFOxFAUBdBT+kY2ZJIaJHZsN9CkKyBk9jP7YAFjcGiSbqAWAQbXZGCCqBhR4CN+EwaDuznivpsHqy2UFLfr6yeCuuO9F4qbgZoQDdwr1ZfjOI7Va+ga2PRRVAN8Cw2YxWoASaRs7mKdTRvlYs/xtZjoFttEtdghpjan0/9WXO1y2p/1/d44Llv6sy2f2f5sTtkOwsMO9sJxQOqFeWqZCemxkl644G1qPvpcmj/5A7MYQXY3aBu8AAAAAElFTkSuQmCC"
-      "36": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACQAAAAkAgMAAACcbnALAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAK5JREFUeNqNz7FNw1AUBdDz45fSEpairEHhBSxlAgqvAGswB2IIJOpILPAXgCZ1EqBIQWHgU/gXkWjSXZ3i3vcapHG9oyGN3WK9E6w2TC+Cm0whLHs4PIUuw0rY9OAxtBmKSDN5i2We01WUal/RVfuNptoUP/8t3c5BidNQY7T5Mtu2F23Ee7X92X3f1V6j1MKHs98838MkHDPshek04E6wbflgweGzvz7OVWkc8AfycUDDtCTBewAAAABJRU5ErkJggg=="
+      "10": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKAgMAAADwXCcuAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAADFJREFUeNpjYGBgYGAIYGBidWVgYrzAwCJscpuZi/8tA+tMBiaGMwxMv18zMDAwMAAAcJ0G87xF2ScAAAAASUVORK5CYII="
+      "12": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAwAAAAMAgMAAAArG7R0AAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAADRJREFUeNpjYGBgYGAIZWBhdHnNzCb+l0XY+DczF/9zFmYo/d74O/N/yaNM/98fYGBgYAAACpMN1CG12MYAAAAASUVORK5CYII="
+      "14": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAAOAgMAAABiJsVCAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAADdJREFUeNpjYEAAUQcGJoZAAQYmRmMXBhbWs/8ZmP4bmzCwMMJZf87+Y2D6/1mHgZnh5bsHCJ0Arc0PTklxxuwAAAAASUVORK5CYII="
+      "16": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQAgMAAABinRfyAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAElJREFUeNpjYEAA1gAGFoZAfgYWRmeG2ywMZxkYWFiMGbRYGM8yvGL5b8zwnYXxLMMrpt/Gxh9YGM4yMDD9/6x/gJnhJvMNhBkAGjUQdvsj5p8AAAAASUVORK5CYII="
+      "18": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABIAAAASAgMAAAAroGbEAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAExJREFUeNpjYEAGjCEMDEwMooIODEwMziYBDCyMvGf/MbAwGDP8ZmBhPcvwn4HlvzEDw2wWRiT2n7MMcDX/zzK8YmBiWG/8AWoaMgAA9iIUvp5H7koAAAAASUVORK5CYII="
+      "20": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUAgMAAADw5/WeAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAFpJREFUeNpVjLEJgEAUxXKfZ2khOIXtX8FWsHFGpxBc4CZwAxEsLCwEz8IrNFWKEPgxgFFUPUbtLaKLCQWHRURAcmgUIqxKDmf2y2F8G0uH+yym8sbYfcvnLw9hrRVL8iUnmgAAAABJRU5ErkJggg=="
+      "22": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABYAAAAWAgMAAAC52oSoAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAGlJREFUeNpdzrENglAYReEP/SlNLHAOi7cAC1g4H0u4AAkLvAWsbA0FBYUFhmdjA7c7yTnJZbdLS6jvE6FJxiHcsrOoEssjZFYhsYg6U0RJ6KLa0Hdj/rsytz5Cf/J0MM3XwdH6Hl+7Iz/fASIYS+7dpQAAAABJRU5ErkJggg=="
+      "24": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYAgMAAACdGdVrAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAG5JREFUeNptzbEJwlAYReEvyZ/CIiA4ynMAHUBI5XBO4QK2dq+w1SYTaBHQQvDZRKuc7sK5HOZpexrVfvscam13WQqr5H0Mu6yojSmthS4rokq4hQwh4fpbZdxwmMz/79T5CI/kpVEW9/MwZWf5AhOcHRlv7NZgAAAAAElFTkSuQmCC"
+      "26": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABoAAAAaAgMAAADUJKRdAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAHhJREFUeNp1zrEJwlAYReEvyd+GIGQK27eAIG5gtnMIwVrIAq+3tAsogmBhETA2gqTI6S6cC4dFij0qul1clIpVbgmROKi0zTDU17BNrPtQZ27Ca8P7GEWd+QgJo5DN9pTN/N+/dEopPYVHNvXCmIyE6dzc/11LfAHF/CTt98A9iQAAAABJRU5ErkJggg=="
+      "28": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAcAgMAAAAPYzcHAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAH1JREFUeNp1ziEKAlEYReFvnD9MGcXgKoxvA7MBo8nqqnQfNsENTNSgxSYKgjBxQA3CA8OcduDey2WYJUpm6+qkVKxu1fgaIjE/hGnLWygTvbBo+Qhdg22of14kuIQWhATn7J+uwSbnc39f/+8/Wx5G+i6ll5L75LjLP4f4Ar9sJAIhW2EFAAAAAElFTkSuQmCC"
+      "30": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAB4AAAAeAgMAAABGXkYxAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAJhJREFUeNp9zzFqAlEYReFP57cKg0UQYSAbSPs2MKBLMI1LyyJkljALyGtDQpohRSAiWFhYqDOphGDhLS+ce7jczazGmMnyBQWr6e/ThzBacGqESWYgPCZ8teGSQVgkPLehzNgKhxrHJkZlRi8kOAnZTTNkN9R1p/Czrqrqrfvn2ie8CudMz9hwSGlHwef8fUNB//3Q3b37B8tbMFDOmwcgAAAAAElFTkSuQmCC"
+      "32": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgAgMAAAAOFJJnAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAI5JREFUeNp9z71twmAUheHH5FJaAikUmcMLILmlZIwMwR5hiEgs4AVuj4AJ+KkoKIzypaAwld/yFO85h1EWa3wwXbWxN2Fe5yehahtOXZjWyUwoDR6/YZ74E9oGtqFOFOG+hJ+o6oRlaMAh5KtwLCkJpRs8g3m3QS/cEuf3Pc+kHFV8bfTfgmuWy9vBEf4BIMwuCzq6BxIAAAAASUVORK5CYII="
+      "34": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACIAAAAiAgMAAABHKeNRAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAJpJREFUeNqNzyFqw3AcxfFPll9laAe7wOzs/wKBHKG05+lB6mc2CFTM5gKxFVNzgcCoiKgIXSYmStTylU9833ssZ7WDnGz7+HwmiIo3MvYb+lrIKoy1oMUPIRIc5Z7WXdd1xVfIE3wKt/bPH6oEL00oWuiFoYRr/V92OsDrzHfv+G4xNcKYMJrtm4aSD4L3wlTzwDiky+z5Un4BgAYyUzfL3E0AAAAASUVORK5CYII="
+      "36": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACQAAAAkAgMAAACcbnALAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAJhJREFUeNqN0CFOA1EAhOFv6SA3KaHhEBjEu0CTamTvwz2or0FsgibZC7w7oAtJRQXiBRZRAUnN/vIXM5NhHgt027t3gu0SwvWGNgg3lRVhU7ATXV+xHiMF7sfoKhzEbYE2xHeFH7E4O/FYYRKnNXiOfqZ76y/z/jqOBb7839IK7MVUMY3C6xON8Fk5cEU7lofh/MGLD/P5BVHUND+rzCQXAAAAAElFTkSuQmCC"
     square:
-      "10": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKAgMAAADwXCcuAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAB5JREFUeNpjDGX4zSQoyMDy2eE7C+/ZV1jpP3t+AwA2nhI9jHsrwAAAAABJRU5ErkJggg=="
-      "12": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAwAAAAMAgMAAAArG7R0AAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAABxJREFUeNpjDGVgYBFk+M/y2YGBhfcsfvrPHgYAa8EQrltfIwIAAAAASUVORK5CYII="
-      "14": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAAOAgMAAABiJsVCAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAACFJREFUeNpjDGVg+M0iyMDwiuWzA8N3Ft6zpLL+7GH4DQBjoBsEuz9HpwAAAABJRU5ErkJggg=="
-      "16": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQAgMAAABinRfyAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAACBJREFUeNpjDGVgYGARZGD4z/LZgYGBhfcs+aw/exgYAFVwFtZFPPcaAAAAAElFTkSuQmCC"
-      "18": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABIAAAASAgMAAAAroGbEAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAACVJREFUeNpjDGVgYPjNIsjAwPCK5bMDA8N3Ft6z1Gf/2cPA8BsA5M0i8CcblyIAAAAASUVORK5CYII="
-      "20": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUAgMAAADw5/WeAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAACVJREFUeNpjDGVgYGBgEWRgYPjP8tmBgYGBhfcsbdl/9jAwMAAAcuYc/m9ZHyYAAAAASUVORK5CYII="
-      "22": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABYAAAAWAgMAAAC52oSoAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAClJREFUeNpjDGVgYGD4zSLIwMDA8IrlswMDA8N3Ft6zA8n7s4eBgeE3ADWDKtyuBSPsAAAAAElFTkSuQmCC"
-      "24": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYAgMAAACdGdVrAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAClJREFUeNpjDGVgYGBgYBFkYGBg+M/y2YGBgYGBhffs4OH92cPAwMAAAA4SIyYhafahAAAAAElFTkSuQmCC"
-      "26": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABoAAAAaAgMAAADUJKRdAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAC1JREFUeNpjDGVgYGBg+M0iyMDAwMDwiuWzAwMDA8N3Ft6zQ4v/Zw8DAwPDbwC0tDLISyIefwAAAABJRU5ErkJggg=="
-      "28": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAcAgMAAAAPYzcHAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAClJREFUeNpjDGVgYGBgYGARZGBgYGD4z/LZAcLnPTu0+X/2MDAwMDAAAHDFKU79oGnBAAAAAElFTkSuQmCC"
-      "30": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAB4AAAAeAgMAAABGXkYxAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAClJREFUeNpjDGVgYGBgYPjNIghhvGL57MDAwMDA8J2F9+xIEfmzBxIIAMGOOrQ7S1E7AAAAAElFTkSuQmCC"
-      "32": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgAgMAAAAOFJJnAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAB9JREFUeNpjDGWAABZBCP2f5bMDVIT37MgV+bMHwgAA5O4vdiXltasAAAAASUVORK5CYII="
-      "34": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACIAAAAiAgMAAABHKeNRAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAACRJREFUeNpjDGWAgN8sglDWK5bPDhDWdxbes6NixIr92QMNSQC7IUKg+KbF7gAAAABJRU5ErkJggg=="
-      "36": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACQAAAAkAgMAAACcbnALAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAACBJREFUeNpjDGWAAhZBKOM/y2cHmBjv2VExSsT+7IGyALR8NZ6Dnc34AAAAAElFTkSuQmCC"
+      "10": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKAgMAAADwXCcuAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAACVJREFUeNpjYIAC1lAGJkYBBqb/JgxMjGcYmP6bMDAzs12DSQMAUMAEifYFqi4AAAAASUVORK5CYII="
+      "12": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAwAAAAMAgMAAAArG7R0AAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAACRJREFUeNpjYIAARtaA30yMggws/42/M7OIX0WhmdnuQZUxAAD0Ngq9RydX9QAAAABJRU5ErkJggg=="
+      "14": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAAOAgMAAABiJsVCAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAACRJREFUeNpjYIABRtYAhtUsjIL/GZj+G5swsDCexcdi2MOABADpOA3qepuyDwAAAABJRU5ErkJggg=="
+      "16": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQAgMAAABinRfyAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAACVJREFUeNpjYEABjIwhDK+ZGFxcGFgYzjIwsDAYM9zCw3rPgA4AbnMJNjQTZscAAAAASUVORK5CYII="
+      "18": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABIAAAASAgMAAAAroGbEAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAACxJREFUeNpjYEAHjIwhDP/XsDC4MPxew8JwluEfAwuDMcNvBlLY7xn+M2ACAC3TE7ZUCdN3AAAAAElFTkSuQmCC"
+      "20": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUAgMAAADw5/WeAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAACpJREFUeNpjYEAHjIwhDAyvWRhcGBiWszCcZWBgYGEwZmC4RS77PQM2AAAq+g1fAEcFIAAAAABJRU5ErkJggg=="
+      "22": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABYAAAAWAgMAAAC52oSoAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAC9JREFUeNpjYMANGBlCGRh+b2BhEGRgeMXAwvDZgeH7BhYG3rPU4P3Zw/CbAR8AAC0sH9RucVlFAAAAAElFTkSuQmCC"
+      "24": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYAgMAAACdGdVrAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAACxJREFUeNpjYMANGBlCGRgYVrMwCDIw/GdgYvhsbGzCwMLAe5b6vD97GPADAEBKGemixqSqAAAAAElFTkSuQmCC"
+      "26": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABoAAAAaAgMAAADUJKRdAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAADNJREFUeNpjYMAPGBlCGRgYfm9gYRBkYGB4xcDC8NmBgeH7BhYG3rP05f/Zw8Dwm4EQAAAbrSkgkSKlmgAAAABJRU5ErkJggg=="
+      "28": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAcAgMAAAAPYzcHAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAADZJREFUeNq9xzERwCAQALBwfQsoqYEOyMUKWhDAtV8LTGQLe4r6kD1EY/XwDj7hulnOPSdp1w8xIiW5JH3d7AAAAABJRU5ErkJggg=="
+      "30": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAB4AAAAeAgMAAABGXkYxAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAADdJREFUeNpjYCABMDKIOjAwMLw+wMLA4sLAwLCcgYXh71kGBgYGBhYGZmMGBoZbg0fk/3sGkgEApF4dxcYJ6goAAAAASUVORK5CYII="
+      "32": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgAgMAAAAOFJJnAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAADdJREFUeNrNyDERwCAQALBwfQsoqYEOyMUKWhDAtV8NbGQMG4r6IHuIhtXDO/AJ143l4MmJtOUHTZwtu2pYvQEAAAAASUVORK5CYII="
+      "34": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACIAAAAiAgMAAABHKeNRAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAADdJREFUeNpjYCAVMDKIOjAwMDC8PsDCwOLCwMDAsJyBheHvWYgsCwOzMQMDA8OtIS/2/z0DmQAAiYkjidW5MAcAAAAASUVORK5CYII="
+      "36": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACQAAAAkAgMAAACcbnALAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAADhJREFUeNrdyDERwCAQALD83SOgWjBSqQjAAkYw0IGh9QBbM4Z9odywWooLpvRWeFqK8Y/TYTnxARfLNZRRT7mcAAAAAElFTkSuQmCC"
   supported_emoji: "[\u231A-\u231B\u23E9-\u23F3\u23F8-\u23FA\u2600-\u2605\u260E\u2611\u2614-\u2615\u2618\u261D\u2620\u2622-\u2623\u2626\u262A\u262E-\u262F\u2638-\u263A\u2640\u2642\u2648-\u2653\u265F-\u2660\u2663\u2665-\u2666\u2668\u267B\u267E-\u267F\u2692-\u2697\u2699\u269B-\u269C\u26A0-\u26A1\u26A7\u26AA-\u26AB\u26B0-\u26B1\u26BD-\u26BE\u26C4-\u26C5\u26C8\u26CE-\u26CF\u26D1\u26D3-\u26D4\u26E9-\u26EA\u26F0-\u26F5\u26F7-\u26FA\u26FD\u2702\u2705\u2708-\u270D\u270F\u2712\u2714\u2716\u271D\u2721\u2728\u2733-\u2734\u2744\u2747\u274C\u274E\u2753-\u2755\u2757\u2763-\u2764\u2795-\u2797\u27A1\u27B0\u27BF\u2B05-\u2B07\u2B1B-\u2B1C\u2B50\u2B55\U0001F004\U0001F0CF\U0001F10D-\U0001F10F\U0001F12F\U0001F16D-\U0001F171\U0001F17E-\U0001F17F\U0001F18E\U0001F191-\U0001F19A\U0001F201-\U0001F202\U0001F21A\U0001F22F\U0001F232-\U0001F23A\U0001F250-\U0001F251\U0001F260-\U0001F265\U0001F300-\U0001F321\U0001F324-\U0001F393\U0001F396-\U0001F397\U0001F399-\U0001F39B\U0001F39E-\U0001F3F0\U0001F3F3-\U0001F3F5\U0001F3F7-\U0001F3FA\U0001F400-\U0001F4FD\U0001F4FF-\U0001F53D\U0001F549-\U0001F54E\U0001F550-\U0001F567\U0001F56F-\U0001F570\U0001F573-\U0001F57A\U0001F587\U0001F58A-\U0001F58D\U0001F590\U0001F595-\U0001F596\U0001F5A4-\U0001F5A5\U0001F5A8\U0001F5B1-\U0001F5B2\U0001F5BC\U0001F5C2-\U0001F5C4\U0001F5D1-\U0001F5D3\U0001F5DC-\U0001F5DE\U0001F5E1\U0001F5E3\U0001F5E8\U0001F5EF\U0001F5F3\U0001F5FA-\U0001F64F\U0001F680-\U0001F6C5\U0001F6CB-\U0001F6D2\U0001F6D5-\U0001F6D7\U0001F6DC-\U0001F6E5\U0001F6E9\U0001F6EB-\U0001F6EC\U0001F6F0\U0001F6F3-\U0001F6FC\U0001F7E0-\U0001F7EB\U0001F7F0\U0001F90C-\U0001F93A\U0001F93C-\U0001F945\U0001F947-\U0001F9FF\U0001FA70-\U0001FA7C\U0001FA80-\U0001FA88\U0001FA90-\U0001FABD\U0001FABF-\U0001FAC5\U0001FACE-\U0001FADB\U0001FAE0-\U0001FAE8\U0001FAF0-\U0001FAF8]"
   strip_pattern: "[\u2600-\u27BF\u2B00-\u2BFF\U0001F000-\U0001FAFF\uFE0F\u200D\u20E3]"
   calendars: !input calendars
@@ -347,19 +350,17 @@ actions:
             {% set s = as_local(as_datetime(e.start ~ ' 00:00:00' if all_day else e.start)) %}
             {% set days = [(s.date() - now().date()).days, 0] | max %}
             {% if all_day %}
-              {% set label = 'Today' if days == 0 else ('Tomorrow' if days == 1 else s.strftime('%a')) %}
+              {% set label = 'Today' if days == 0 else (s.strftime('%a') if days < 7 else s.strftime('%a %d')) %}
             {% elif s <= now() %}
               {% set label = 'Now' %}
             {% elif days == 0 %}
               {% set label = s.strftime('%H:%M') %}
-            {% elif days == 1 %}
-              {% set label = 'Tom ' ~ s.strftime('%H:%M') %}
             {% else %}
               {% set label = s.strftime('%a %H:%M') %}
             {% endif %}
             {% set raw = e.get('summary') or '' %}
             {% set ns.rows = ns.rows + [{
-              'ts': as_timestamp(s), 'lead': label, 'lead_red': days == 0, 'trail': '', 'trail_red': false,
+              'ts': as_timestamp(s), 'lead': label, 'lead_red': days == 0,
               'task': false, 'raw': raw,
               'summary': (raw | regex_replace(strip_pattern, '') | regex_replace('\\s{2,}', ' ')) | trim
             }] %}
@@ -372,19 +373,17 @@ actions:
           {% for it in (body or {}).get('items') or [] %}
             {% set due = as_datetime(it.get('due')) if it.get('due') else none %}
             {% set days = (as_local(due).date() - now().date()).days if due is not none else none %}
-            {% if days is none %}
+            {% if days is none or days == 0 %}
               {% set due_text = '' %}
-            {% elif days == 0 %}
-              {% set due_text = 'Today' %}
-            {% elif days == 1 %}
-              {% set due_text = 'Tomorrow' %}
+            {% elif days < 0 or days > 6 %}
+              {% set due_text = as_local(due).strftime('%a %d') %}
             {% else %}
-              {% set due_text = as_local(due).strftime('%a %d %b') if days < 0 or days > 6 else as_local(due).strftime('%a') %}
+              {% set due_text = as_local(due).strftime('%a') %}
             {% endif %}
             {% set raw = it.get('summary') or '' %}
             {% set ns.rows = ns.rows + [{
-              'ts': as_timestamp(due) if due is not none else 4102444800, 'lead': '', 'lead_red': false,
-              'trail': due_text, 'trail_red': days is not none and days < 0,
+              'ts': as_timestamp(due) if due is not none else 4102444800, 'lead': due_text,
+              'lead_red': days is not none and days < 0,
               'task': true, 'raw': raw,
               'summary': (raw | regex_replace(strip_pattern, '') | regex_replace('\\s{2,}', ' ')) | trim
             }] %}
@@ -398,7 +397,8 @@ actions:
       row_h: "{{ (H * 0.12) | round(0) | int }}"
       size: "{{ (row_h * 0.66) | round(0) | int }}"
       box: "{{ (row_h * 0.50) | round(0) | int }}"
-      emoji_size: "{{ [[((row_h * 0.8) | round(0) | int) // 2 * 2, 10] | max, 36] | min }}"
+      emoji_size: "{{ [[((row_h * 0.7) | round(0) | int) // 2 * 2, 10] | max, 36] | min }}"
+      gap: "{{ [3, (W * 0.012) | round(0) | int] | max }}"
       body_top: "{{ header_h + 3 }}"
       fit: "{{ ((H - body_top) / row_h) | int }}"
       rows: "{{ [fit, max_items | int] | min }}"
@@ -408,14 +408,15 @@ actions:
       ev_show: "{{ [events | count, [shown - (tasks | count), (shown + 1) // 2] | max] | min }}"
       tk_show: "{{ [tasks | count, shown - ev_show] | min }}"
       chosen: "{{ events[:ev_show] + tasks[:tk_show] }}"
-      label_chars: >-
-        {{ [events[:ev_show] | map(attribute='lead') | map('length') | max, 4] | max if ev_show > 0 else 4 }}
-      lead_w: >-
-        {{ [((label_chars + 1) * 0.62 * size) if ev_show > 0 else 0, (box + pad) if tk_show > 0 else 0] | max | round(0) | int }}
-      text_x: "{{ pad + lead_w }}"
+      ev_chars: >-
+        {{ [events[:ev_show] | map(attribute='lead') | map('length') | max, 4] | max if ev_show > 0 else 0 }}
+      tk_chars: >-
+        {{ [tasks[:tk_show] | map(attribute='lead') | map('length') | max, 4] | max if tk_show > 0 and (tasks[:tk_show] | selectattr('lead') | list | count) > 0 else 0 }}
+      ev_text_x: "{{ (pad + ev_chars * 0.58 * size + gap) | round(0) | int if ev_show > 0 else pad }}"
+      tk_text_x: "{{ (pad + box + gap + (tk_chars * 0.58 * size + gap if tk_chars > 0 else 0)) | round(0) | int }}"
       date_text: "{{ now().strftime('%a %d %b') }}"
       payload: >-
-        {% set ns = namespace(p=[]) %}
+        {% set ns = namespace(p=[], slot=0, spare=([rows - total, 0] | max), div=false) %}
         {% set ns.p = ns.p + [{
           'type': 'rectangle', 'x_start': 0, 'y_start': 0, 'x_end': W - 1, 'y_end': header_h,
           'fill': 'black', 'outline': 'black'
@@ -437,7 +438,7 @@ actions:
         {% endif %}
         {% set title_max = ((W - 2 * pad - glyph_size - ((date_text | length) + 2) * 0.55 * header_size) / (0.6 * header_size)) | int %}
         {% set ns.p = ns.p + [{
-          'type': 'text', 'value': title if title | length <= title_max else title[:title_max - 1] ~ '…',
+          'type': 'text', 'value': title if title | length <= title_max else (title[:title_max - 1] | trim) ~ '…',
           'x': pad + glyph_size + pad, 'y': (header_h / 2) | round(0) | int, 'size': header_size,
           'color': 'white', 'anchor': 'lm', 'font': bold_font
         }, {
@@ -465,25 +466,50 @@ actions:
             'size': (size * 1.2) | round(0) | int, 'color': 'black', 'anchor': 'mm', 'font': bold_font
           }] %}
         {% endif %}
-        {% if ev_show > 0 and tk_show > 0 %}
-          {% set ns.p = ns.p + [{
-            'type': 'line', 'x_start': pad, 'x_end': W - pad - 1,
-            'y_start': body_top + ev_show * row_h, 'y_end': body_top + ev_show * row_h,
-            'fill': 'black', 'width': 1
-          }] %}
-        {% endif %}
         {% for r in chosen %}
-          {% set y = (body_top + (loop.index0 + 0.5) * row_h) | round(0) | int %}
+          {% if r.task and not ns.div and ev_show > 0 %}
+            {% set ns.div = true %}
+            {% set ns.p = ns.p + [{
+              'type': 'line', 'x_start': pad, 'x_end': W - pad - 1,
+              'y_start': body_top + ns.slot * row_h, 'y_end': body_top + ns.slot * row_h,
+              'fill': 'black', 'width': 1
+            }] %}
+          {% endif %}
+          {% set y = (body_top + (ns.slot + 0.5) * row_h) | round(0) | int %}
           {% set ems = (r.raw | regex_findall(supported_emoji))[:3] if emoji_mode == 'image' else [] %}
-          {% set tx = text_x + ems | count * (emoji_size + 3) %}
-          {% set trail_w = ((r.trail | length) + 1) * 0.5 * size if r.trail else 0 %}
-          {% set mc = ((W - tx - pad - trail_w) / (0.5 * size)) | int %}
+          {% set text_x = tk_text_x if r.task else ev_text_x %}
+          {% set tx = text_x + ems | count * emoji_size + (3 if ems else 0) %}
+          {% set mc = ((W - tx - pad) / (0.5 * size)) | int %}
+          {% set line1 = r.summary %}
+          {% set line2 = '' %}
+          {% if r.summary | length > mc and ns.spare > 0 %}
+            {% set w = namespace(a='', b='', done=false) %}
+            {% for word in r.summary.split(' ') %}
+              {% if not w.done and ((w.a ~ ' ' ~ word) | trim | length) <= mc %}
+                {% set w.a = (w.a ~ ' ' ~ word) | trim %}
+              {% else %}
+                {% set w.done = true %}
+                {% set w.b = (w.b ~ ' ' ~ word) | trim %}
+              {% endif %}
+            {% endfor %}
+            {% if w.a and w.b %}
+              {% set line1 = w.a %}
+              {% set line2 = w.b %}
+              {% set ns.spare = ns.spare - 1 %}
+            {% endif %}
+          {% endif %}
           {% if r.task %}
             {% set ns.p = ns.p + [{
               'type': 'rectangle', 'x_start': pad, 'y_start': y - (box / 2) | round(0) | int,
               'x_end': pad + box, 'y_end': y + (box / 2) | round(0) | int,
               'outline': 'black', 'fill': 'white', 'width': 2
             }] %}
+            {% if r.lead %}
+              {% set ns.p = ns.p + [{
+                'type': 'text', 'value': r.lead, 'x': pad + box + gap, 'y': y, 'size': size,
+                'color': 'red' if r.lead_red else 'black', 'anchor': 'lm', 'font': bold_font
+              }] %}
+            {% endif %}
           {% else %}
             {% set ns.p = ns.p + [{
               'type': 'text', 'value': r.lead, 'x': pad, 'y': y, 'size': size,
@@ -491,13 +517,13 @@ actions:
             }] %}
           {% endif %}
           {% set ns.p = ns.p + [{
-            'type': 'text', 'value': r.summary if r.summary | length <= mc else r.summary[:mc - 1] ~ '…',
+            'type': 'text', 'value': line1 if line1 | length <= mc else (line1[:mc - 1] | trim) ~ '…',
             'x': tx, 'y': y, 'size': size, 'color': 'black', 'anchor': 'lm', 'font': text_font
           }] %}
-          {% if r.trail %}
+          {% if line2 %}
             {% set ns.p = ns.p + [{
-              'type': 'text', 'value': r.trail, 'x': W - pad, 'y': y, 'size': size,
-              'color': 'red' if r.trail_red else 'black', 'anchor': 'rm', 'font': bold_font
+              'type': 'text', 'value': line2 if line2 | length <= mc else (line2[:mc - 1] | trim) ~ '…',
+              'x': tx, 'y': y + row_h, 'size': size, 'color': 'black', 'anchor': 'lm', 'font': text_font
             }] %}
           {% endif %}
           {% for ch in ems %}
@@ -505,15 +531,16 @@ actions:
             {% set shape = dither_shapes.get(code) if dither_brown else none %}
             {% set ns.p = ns.p + [{
               'type': 'dlimg', 'url': dither_png[shape][emoji_size | string] if shape else emoji_image_url.replace('{code}', code),
-              'x': text_x + loop.index0 * (emoji_size + 3),
+              'x': text_x + loop.index0 * emoji_size,
               'y': y - (emoji_size / 2) | round(0) | int, 'xsize': emoji_size, 'ysize': emoji_size
             }] %}
           {% endfor %}
+          {% set ns.slot = ns.slot + (2 if line2 else 1) %}
         {% endfor %}
         {% if overflow %}
           {% set ns.p = ns.p + [{
             'type': 'text', 'value': '+' ~ (total - ev_show - tk_show) ~ ' more', 'x': pad,
-            'y': (body_top + (shown + 0.5) * row_h) | round(0) | int, 'size': size,
+            'y': (body_top + (ns.slot + 0.5) * row_h) | round(0) | int, 'size': size,
             'color': 'red', 'anchor': 'lm', 'font': bold_font
           }] %}
         {% endif %}

@@ -33,12 +33,16 @@ Replace `panda_esl_agenda.yaml` with the file name of another blueprint from the
 | Part | Content |
 |----|----|
 | Header | Title and the date. |
-| Events | Time column and summary, sorted by start time. Events that start today are red. |
+| Events | Time or day column, then the summary, sorted by start time. An event today shows its time in red, or `Now`. A later event starts with the short day name, such as `Thu 09:00`. An all-day event shows `Today` or the day name. |
 | Divider | One black line, drawn only when both lists have rows. |
-| Tasks | Checkbox, summary, and due date. An overdue date is red. Items with no due date follow the dated items. |
+| Tasks | Checkbox, the due day, then the summary. A task due today has no day. A later task shows the short day name. An overdue task shows the day name and date in red, such as `Sun 22`. Tasks with no due date follow the dated tasks. |
 | Last row | `+N more` in red when more entries exist than rows fit. |
 
+The event text and the task text each start in their own column, so the checkbox sits close to its text when no task has a day.
+
 The rows are shared. When both lists are long, each keeps at least half of the rows. A short list leaves its unused rows to the other.
+
+When the panel has unused rows, a summary that does not fit one line wraps at a word boundary onto a second row, aligned under the first line of text. The wrap is limited to the unused rows, in order from the top. Without unused rows the text is cut with an ellipsis. The font size does not change.
 
 The automation writes at Home Assistant start, when a calendar or to-do entity changes state, and on the update interval. It skips the write when both services fail.
 
@@ -72,14 +76,14 @@ https://cdn.jsdelivr.net/gh/hfg-gmuend/openmoji@15.1.0/color/72x72/{code}.png
 
 The brown circle (`1F7E4`) and the brown square (`1F7EB`) have no colour on the panel. With Dither brown emoji on, the blueprint draws a checkerboard of red and black pixels with a black outline, which reads as dark red. The black circle (`26AB`) stays solid black.
 
-The renderer resamples any image that is not drawn at its own size. Each dither image is therefore a PNG data URL at the exact emoji size. Emoji sizes are even numbers from 10 to 36 pixels:
+The renderer resamples any image that is not drawn at its own size. Each dither image is therefore a PNG data URL at the exact emoji size. Emoji sizes are even numbers from 10 to 36 pixels, 70 per cent of the row height. The coloured shape covers the same share of the image as the OpenMoji black circle, so a brown circle and a black circle have the same diameter. Consecutive emoji touch, with 3 pixels before the text:
 
 | Resolution | Emoji size |
 |----|----|
-| 256 x 128 | 12 |
-| 296 x 152 | 14 |
-| 360 x 240 | 22 |
-| 400 x 300 | 28 |
+| 256 x 128 | 10 |
+| 296 x 152 | 12 |
+| 360 x 240 | 20 |
+| 400 x 300 | 24 |
 
 `tools/panda_dither_png.py` prints the images as a YAML block, for a different size or shape.
 

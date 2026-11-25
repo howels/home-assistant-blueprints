@@ -46,6 +46,8 @@ async def run(hass, calls, skip_condition=True):
         "automation", "trigger", {"entity_id": "automation.label", "skip_condition": skip_condition}, blocking=False
     )
     await pump()
+    if not calls:
+        await hass.async_block_till_done()
     assert calls, "no write"
     service, data = calls[-1]
     out = os.environ.get("PANDA_PAYLOAD_DIR")
