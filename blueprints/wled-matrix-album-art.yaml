@@ -30,19 +30,31 @@ blueprint:
     Assistant, for example https://ha.example.com.
 
 
-    The run restarts when the active player changes or when that player's
-    picture changes. It sends the picture once a second while that player
-    stays playing. When playback leaves that player, the run waits five
-    seconds. If that player is still not playing, each panel's lights are
-    turned off and its stream is cleared. A new active player during that
-    wait restarts the run, so the panels are not cleared between tracks.
+    The run restarts when a watched player changes. It clears each stream,
+    then sends the picture once a second while the active player stays
+    playing. When playback leaves that player, the run waits five seconds.
+    If no watched player is playing, the lights are put back, any stop
+    preset is selected, and the streams are cleared. A new active player
+    during that wait restarts the run, so the panels are not cleared between
+    tracks.
 
 
-    Each send uses brightness 255, auto brightness, histogram clip 0, a 10
-    second timeout, and a 5 second keepalive at 0.3 second intervals. 1 leaves
-    saturation, contrast, and gamma unchanged. 0 leaves sharpen off. The
-    service accepts saturation 0 to 2, contrast 0.5 to 2, sharpen 0 to 2, and
-    gamma 0.1 to 3.
+    Lights. A panel can turn its lights on with the music. The first playing
+    run of a session snapshots those lights into a scene, then turns them on.
+    The light session boolean remembers that this session took the snapshot.
+    A later track does not take a new snapshot. When the session ends, the
+    snapshot is restored, so a light is turned off only if this session
+    turned it on. Set a distinct light session name for each automation. A
+    panel marked force off is turned off at the end even if it was already
+    on. A panel can also set a select entity to an option when playback
+    stops, which is how the living-room Pixoo returns to the Black preset.
+
+
+    Each send uses brightness 255, auto brightness, and histogram clip 0.
+    Keepalive defaults to 5 seconds at 0.3 second intervals. A panel can set
+    keepalive to 0, which the Pixoo automations did. 1 leaves saturation,
+    contrast, and gamma unchanged. 0 leaves sharpen off. The service accepts
+    saturation 0 to 2, contrast 0.5 to 2, sharpen 0 to 2, and gamma 0.1 to 3.
 
 
     Recorded settings from the previous per-panel automations. One automation
@@ -53,31 +65,32 @@ blueprint:
     Matrices. Primary media_player.meraki_mx64, then
     media_player.study_amplifier_4, then media_player.study_amplifier.
     wled-hub75.example is 64 by 64, saturation 1.2, contrast 0.9, sharpen 0.5,
-    gamma 0.5, lights light.wled_hub75 and light.hub_75_panel_main. The study
-    player automation used contrast 1.4 and gamma 0.7 on that panel.
-    wled-matrix-portal-s3.example is 64 by 64, saturation 1.2, contrast 0.9,
-    sharpen 0.5, gamma 0.5, lights
+    gamma 0.5. It does not turn lights on. It forces off light.wled_hub75 and
+    light.hub_75_panel_main. The study player automation used contrast 1.4
+    and gamma 0.7 on that panel. wled-matrix-portal-s3.example is the same
+    image settings and also forces its lights off:
     light.ledfx_ledfx_lan_wled_matrix_portal_s3_not_lan and
     light.study_wled_matrix_portal_s3_main.
     wled-matrix-portal-s3-2.example is 128 by 128, saturation 1.2, contrast
-    1.1, sharpen 0.5, gamma 0.6, light light.study_wled_matrix_portal_s3_2_main.
-    nanopi-r3s.example is 128 by 128, saturation 1.2, contrast 1.1, sharpen 0.5,
-    gamma 0.6, light light.mm_2d95.
+    1.1, sharpen 0.5, gamma 0.6. It turns on
+    light.study_wled_matrix_portal_s3_2_main with the music.
+    nanopi-r3s.example is the same 128 by 128 image settings. It turns on
+    light.mm_2d95. The effect is Stephen4 while
+    media_player.moonlight_squeezelite_5 is playing, and OnlyDDP otherwise.
+    The LedFX automation always used Stephen4.
 
 
     Pixoo in the living room. Primary media_player.living_room_audio_2, then
     media_player.plex_plex_for_android_tv_bravia_vh2.
     wled-pixoo64-2.example is 64 by 64, saturation 1.2, contrast 1.6, sharpen
-    0.5, gamma 1.2. The Plex automation used contrast 1.1. Those automations
-    also set the Pixoo preset to Black after playback and sent keepalive 0.
-    This blueprint turns lights off, clears the stream, and keeps a 5 second
-    keepalive.
+    0.5, gamma 1.2, keepalive 0. The Plex automation used contrast 1.1. When
+    playback stops, select.wled_pixoo64_2_not_lan_preset is set to Black.
 
 
     Pixoo in the kitchen. media_player.kitchen_audio_2 only.
     wled-pixoo64-1.example is 64 by 64, saturation 1.3, contrast 1.4, sharpen
-    0.2, gamma 1.2, light light.wled_pixoo64_1_not_lan. That automation turned
-    the panel on before the stream and used keepalive 0.
+    0.2, gamma 1.2, keepalive 0. It turns on light.wled_pixoo64_1_not_lan with
+    the music.
   input:
     player_section:
       name: Players
@@ -114,6 +127,35 @@ blueprint:
           default: ""
           selector:
             text: {}
+        session_name:
+          name: Light session name
+          description: >-
+            Names the scene that stores the lights before they are turned on.
+            Use a different name for each automation, for example matrices.
+          default: album_art
+          selector:
+            text: {}
+        light_session:
+          name: Light session
+          description: >-
+            Input boolean for that scene. Off means idle. The first playing
+            run snapshots the turn-on lights and turns this on. When playback
+            has stopped, the snapshot is restored and this is turned off.
+            Leave empty and turn-on lights are turned off at the end of the
+            run instead of restored.
+          default: ""
+          selector:
+            entity:
+              filter:
+                - domain: input_boolean
+        clear_before_send:
+          name: Clear before sending
+          description: >-
+            Stop the DDP stream and clear the panel before the first picture
+            of a run. The existing automations do this.
+          default: true
+          selector:
+            boolean: {}
     panel_section:
       name: Panels
       icon: mdi:view-grid
@@ -210,12 +252,58 @@ blueprint:
                       step: 0.1
                       mode: box
                 lights:
-                  label: Lights off
+                  label: Lights
                   selector:
                     entity:
                       multiple: true
                       filter:
                         - domain: light
+                turn_on:
+                  label: Turn on with the music
+                  default: true
+                  selector:
+                    boolean: {}
+                force_off:
+                  label: Force off when music stops
+                  default: false
+                  selector:
+                    boolean: {}
+                on_effect:
+                  label: Effect when turned on
+                  default: ""
+                  selector:
+                    text: {}
+                effect_player:
+                  label: Effect player
+                  selector:
+                    entity:
+                      filter:
+                        - domain: media_player
+                effect_when_playing:
+                  label: Alternate effect
+                  default: ""
+                  selector:
+                    text: {}
+                keepalive:
+                  label: Keepalive seconds
+                  default: 5
+                  selector:
+                    number:
+                      min: 0
+                      max: 600
+                      step: 1
+                      mode: box
+                stop_select:
+                  label: Select at stop
+                  selector:
+                    entity:
+                      filter:
+                        - domain: select
+                stop_option:
+                  label: Option at stop
+                  default: ""
+                  selector:
+                    text: {}
 
 triggers:
   - trigger: state
@@ -228,6 +316,9 @@ variables:
   fallbacks: !input fallback_players
   prefix: !input picture_url_prefix
   panels: !input panels
+  session_name: !input session_name
+  light_session: !input light_session
+  clear_before_send: !input clear_before_send
   active: >-
     {% set players = [primary] + (fallbacks | default([]) | list) %}
     {% set ns = namespace(active='') %}
@@ -275,7 +366,15 @@ variables:
         'contrast': raw.contrast | default(0.9) | float,
         'sharpen': raw.sharpen | default(0.5) | float,
         'gamma': raw.gamma | default(0.5) | float,
+        'keepalive': raw.keepalive | default(5) | int,
         'lights': lights,
+        'turn_on': raw.turn_on | default(true),
+        'force_off': raw.force_off | default(false),
+        'on_effect': raw.on_effect | default('', true),
+        'effect_player': raw.effect_player | default('', true),
+        'effect_when_playing': raw.effect_when_playing | default('', true),
+        'stop_select': raw.stop_select | default('', true),
+        'stop_option': raw.stop_option | default('', true),
         'missing': missing
       }] %}
     {% endfor %}
@@ -298,6 +397,76 @@ actions:
       - condition: template
         value_template: "{{ active | length > 0 }}"
     then:
+      - variables:
+          turn_on_lights: >-
+            {% set ns = namespace(items=[]) %}
+            {% for t in targets if t.turn_on %}
+              {% for light in t.lights %}
+                {% set ns.items = ns.items + [light] %}
+              {% endfor %}
+            {% endfor %}
+            {{ ns.items | unique | list }}
+      - if:
+          - condition: template
+            value_template: >-
+              {{ turn_on_lights | length > 0 and light_session | length > 0
+                 and is_state(light_session, 'off') }}
+        then:
+          - action: scene.create
+            data:
+              scene_id: "album_art_lights_{{ session_name | slugify }}"
+              snapshot_entities: "{{ turn_on_lights }}"
+          - action: input_boolean.turn_on
+            target:
+              entity_id: "{{ light_session }}"
+      - repeat:
+          for_each: "{{ targets }}"
+          sequence:
+            - if:
+                - condition: template
+                  value_template: "{{ repeat.item.turn_on and repeat.item.lights | length > 0 }}"
+              then:
+                - if:
+                    - condition: template
+                      value_template: >-
+                        {{ repeat.item.effect_player | length > 0
+                           and is_state(repeat.item.effect_player, 'playing')
+                           and repeat.item.effect_when_playing | length > 0 }}
+                  then:
+                    - action: light.turn_on
+                      continue_on_error: true
+                      target:
+                        entity_id: "{{ repeat.item.lights }}"
+                      data:
+                        effect: "{{ repeat.item.effect_when_playing }}"
+                  else:
+                    - if:
+                        - condition: template
+                          value_template: "{{ repeat.item.on_effect | length > 0 }}"
+                      then:
+                        - action: light.turn_on
+                          continue_on_error: true
+                          target:
+                            entity_id: "{{ repeat.item.lights }}"
+                          data:
+                            effect: "{{ repeat.item.on_effect }}"
+                      else:
+                        - action: light.turn_on
+                          continue_on_error: true
+                          target:
+                            entity_id: "{{ repeat.item.lights }}"
+      - if:
+          - condition: template
+            value_template: "{{ clear_before_send }}"
+        then:
+          - repeat:
+              for_each: "{{ targets }}"
+              sequence:
+                - action: ha_ddp2wled.stop_ddp_stream
+                  continue_on_error: true
+                  data:
+                    clear_display: true
+                    wled_host: "{{ repeat.item.host }}"
       - repeat:
           while:
             - condition: template
@@ -326,7 +495,7 @@ actions:
                           brightness: 255
                           auto_bright: true
                           clip_hist_percent: 0
-                          keepalive_seconds: 5
+                          keepalive_seconds: "{{ repeat.item.keepalive }}"
                           keepalive_interval: 0.3
                           image_url: "{{ picture_url }}"
                           wled_host: "{{ repeat.item.host }}"
@@ -340,26 +509,74 @@ actions:
                 seconds: 1
       - delay:
           seconds: 5
+      - variables:
+          still_active: >-
+            {% set players = [primary] + (fallbacks | default([]) | list) %}
+            {% set ns = namespace(active='') %}
+            {% for p in players if p %}
+              {% if ns.active == '' and is_state(p, 'playing') %}
+                {% set ns.active = p %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.active }}
       - if:
           - condition: template
-            value_template: "{{ not is_state(active, 'playing') }}"
+            value_template: "{{ still_active | trim | length == 0 }}"
         then:
-          - repeat:
-              for_each: "{{ targets }}"
-              sequence:
-                - if:
-                    - condition: template
-                      value_template: "{{ repeat.item.lights | length > 0 }}"
-                  then:
-                    - action: light.turn_off
-                      continue_on_error: true
-                      target:
-                        entity_id: "{{ repeat.item.lights }}"
-                - action: ha_ddp2wled.stop_ddp_stream
-                  continue_on_error: true
-                  data:
-                    clear_display: true
-                    wled_host: "{{ repeat.item.host }}"
+          - sequence:
+              - sequence: &release_panels
+                  - if:
+                      - condition: template
+                        value_template: "{{ light_session | length > 0 and is_state(light_session, 'on') }}"
+                    then:
+                      - action: scene.turn_on
+                        continue_on_error: true
+                        target:
+                          entity_id: "scene.album_art_lights_{{ session_name | slugify }}"
+                      - action: input_boolean.turn_off
+                        continue_on_error: true
+                        target:
+                          entity_id: "{{ light_session }}"
+                    else:
+                      - repeat:
+                          for_each: "{{ targets }}"
+                          sequence:
+                            - if:
+                                - condition: template
+                                  value_template: "{{ repeat.item.turn_on and repeat.item.lights | length > 0 }}"
+                              then:
+                                - action: light.turn_off
+                                  continue_on_error: true
+                                  target:
+                                    entity_id: "{{ repeat.item.lights }}"
+                  - repeat:
+                      for_each: "{{ targets }}"
+                      sequence:
+                        - if:
+                            - condition: template
+                              value_template: "{{ repeat.item.force_off and repeat.item.lights | length > 0 }}"
+                          then:
+                            - action: light.turn_off
+                              continue_on_error: true
+                              target:
+                                entity_id: "{{ repeat.item.lights }}"
+                        - if:
+                            - condition: template
+                              value_template: >-
+                                {{ repeat.item.stop_select | length > 0
+                                   and repeat.item.stop_option | length > 0 }}
+                          then:
+                            - action: select.select_option
+                              continue_on_error: true
+                              target:
+                                entity_id: "{{ repeat.item.stop_select }}"
+                              data:
+                                option: "{{ repeat.item.stop_option }}"
+                        - action: ha_ddp2wled.stop_ddp_stream
+                          continue_on_error: true
+                          data:
+                            clear_display: true
+                            wled_host: "{{ repeat.item.host }}"
     else:
       - delay:
           seconds: 5
@@ -377,21 +594,6 @@ actions:
           - condition: template
             value_template: "{{ still_active | trim | length == 0 }}"
         then:
-          - repeat:
-              for_each: "{{ targets }}"
-              sequence:
-                - if:
-                    - condition: template
-                      value_template: "{{ repeat.item.lights | length > 0 }}"
-                  then:
-                    - action: light.turn_off
-                      continue_on_error: true
-                      target:
-                        entity_id: "{{ repeat.item.lights }}"
-                - action: ha_ddp2wled.stop_ddp_stream
-                  continue_on_error: true
-                  data:
-                    clear_display: true
-                    wled_host: "{{ repeat.item.host }}"
+          - sequence: *release_panels
 
 mode: restart
