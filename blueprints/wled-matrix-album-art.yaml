@@ -4,343 +4,394 @@ blueprint:
   domain: automation
   source_url: https://github.com/howels/home-assistant-blueprints/blob/main/blueprints/wled-matrix-album-art.yaml
   description: >-
-    Shows a media player's album art on a WLED matrix and clears the matrix
-    when playback stops.
+    Shows album art from one media player on one or more WLED matrices, and
+    clears them when playback stops.
 
 
-    ha_ddp2wled.stop_ddp_stream clears the panel, then
-    ha_ddp2wled.send_to_wled_ddp sends entity_picture once a second while the
-    player state is playing. The automation restarts when the player enters
-    playing and whenever entity_picture changes, which cancels the previous
-    send. When the player leaves playing, the run waits five seconds. If the
-    state is still paused, idle, or off, the selected WLED lights are turned
-    off and the stream is cleared. A new track during that wait restarts the
-    automation, so the panel is not cleared between tracks.
+    Players. The primary player is used while its state is playing. Otherwise
+    the fallback players are checked in the order they are entered, and the
+    first one that is playing is used. Any change to a watched player restarts
+    the run. The picture sent is still the active player's picture, so a
+    change to another player does not replace the art.
 
 
-    A selected WLED device supplies the DDP host from that device's
-    configuration URL, and the WLED host field is ignored. When no device is
-    selected, the WLED host field is used. It accepts a hostname, an IP
-    address, or a URL. One of the two must be set. The blueprint editor cannot
-    check that, so a run with neither set stops before any DDP traffic. A
-    Colorlight receiver has no WLED device, so it uses the host field.
+    Panels. Each panel is sent the same picture with its own size and image
+    settings. A panel with a WLED device takes the DDP host from that device's
+    configuration URL, and the panel's host field is ignored. A panel without
+    a device uses its host, which may be a hostname, an IP address, or a URL.
+    A Colorlight receiver has no WLED device, so it uses the host field.
 
 
-    entity_picture on some players is a path such as
-    /api/media_player_proxy/.... The picture URL prefix is prepended to those
-    paths. An entity_picture that already starts with http:// or https:// is
-    sent unchanged. Use the base URL of your Home Assistant instance, for example
-    https://ha.example.com.
+    Picture URL. Some players store an absolute URL, including a URL on
+    another host. A picture that already starts with http:// or https:// is
+    sent unchanged. Some players store a Home Assistant path such as
+    /api/media_player_proxy/.... The picture URL prefix is prepended only to
+    those paths. Set the prefix to the external base URL of this Home
+    Assistant, for example https://ha.example.com.
 
 
-    Saturation, contrast, sharpen, and gamma are sent on every frame. 1 leaves
+    The run restarts when the active player changes or when that player's
+    picture changes. It sends the picture once a second while that player
+    stays playing. When playback leaves that player, the run waits five
+    seconds. If that player is still not playing, each panel's lights are
+    turned off and its stream is cleared. A new active player during that
+    wait restarts the run, so the panels are not cleared between tracks.
+
+
+    Each send uses brightness 255, auto brightness, histogram clip 0, a 10
+    second timeout, and a 5 second keepalive at 0.3 second intervals. 1 leaves
     saturation, contrast, and gamma unchanged. 0 leaves sharpen off. The
     service accepts saturation 0 to 2, contrast 0.5 to 2, sharpen 0 to 2, and
-    gamma 0.1 to 3. The defaults are the outdoor HUB75 set.
+    gamma 0.1 to 3.
 
 
-    Outdoor HUB75, such as wled-matrix-portal-s3.example: saturation 1.2,
-    contrast 0.9, sharpen 0.5, gamma 0.5. Gamma below 1 lifts the midtones, so
-    the picture stays readable in daylight. Contrast below 1 keeps the shadows
-    from switching fully off in sun.
+    Recorded settings from the previous per-panel automations. One automation
+    can carry a whole group because the picture prefix is shared and each
+    panel keeps its own numbers.
 
 
-    Indoor HUB75, such as wled-hub75.example: saturation 1.2, contrast 1.4,
-    sharpen 0.5, gamma 0.7. A dark room can hold the deeper blacks. The meraki
-    automation on that same host still uses the outdoor set, contrast 0.9 and
-    gamma 0.5.
+    Matrices. Primary media_player.meraki_mx64, then
+    media_player.study_amplifier_4, then media_player.study_amplifier.
+    wled-hub75.example is 64 by 64, saturation 1.2, contrast 0.9, sharpen 0.5,
+    gamma 0.5, lights light.wled_hub75 and light.hub_75_panel_main. The study
+    player automation used contrast 1.4 and gamma 0.7 on that panel.
+    wled-matrix-portal-s3.example is 64 by 64, saturation 1.2, contrast 0.9,
+    sharpen 0.5, gamma 0.5, lights
+    light.ledfx_ledfx_lan_wled_matrix_portal_s3_not_lan and
+    light.study_wled_matrix_portal_s3_main.
+    wled-matrix-portal-s3-2.example is 128 by 128, saturation 1.2, contrast
+    1.1, sharpen 0.5, gamma 0.6, light light.study_wled_matrix_portal_s3_2_main.
+    nanopi-r3s.example is 128 by 128, saturation 1.2, contrast 1.1, sharpen 0.5,
+    gamma 0.6, light light.mm_2d95.
 
 
-    Colorlight receiver, such as nanopi-r3s.example: saturation 1.2, contrast 1.1,
-    sharpen 0.5, gamma 0.6, on a 128 by 128 frame. The correction stays nearer
-    to 1 than on a raw outdoor HUB75.
+    Pixoo in the living room. Primary media_player.living_room_audio_2, then
+    media_player.plex_plex_for_android_tv_bravia_vh2.
+    wled-pixoo64-2.example is 64 by 64, saturation 1.2, contrast 1.6, sharpen
+    0.5, gamma 1.2. The Plex automation used contrast 1.1. Those automations
+    also set the Pixoo preset to Black after playback and sent keepalive 0.
+    This blueprint turns lights off, clears the stream, and keeps a 5 second
+    keepalive.
 
 
-    Each send also uses brightness 255, auto brightness, histogram clip 0, a
-    10 second timeout, and a 5 second keepalive at 0.3 second intervals.
+    Pixoo in the kitchen. media_player.kitchen_audio_2 only.
+    wled-pixoo64-1.example is 64 by 64, saturation 1.3, contrast 1.4, sharpen
+    0.2, gamma 1.2, light light.wled_pixoo64_1_not_lan. That automation turned
+    the panel on before the stream and used keepalive 0.
   input:
     player_section:
-      name: Media player
+      name: Players
       icon: mdi:speaker
       collapsed: false
       input:
-        media_player:
-          name: Media player
-          description: Player whose entity_picture is sent to the matrix.
+        primary_player:
+          name: Primary player
+          description: >-
+            Used while its state is playing. Fallback players are used, in
+            the order they are entered, only when this player is not playing.
           selector:
             entity:
+              filter:
+                - domain: media_player
+        fallback_players:
+          name: Fallback players
+          description: >-
+            Checked in list order when the primary player is not playing. The
+            first one whose state is playing supplies the picture.
+          default: []
+          selector:
+            entity:
+              multiple: true
               filter:
                 - domain: media_player
         picture_url_prefix:
           name: Picture URL prefix
           description: >-
-            Prepended when entity_picture is a path. Leave empty when
-            entity_picture is already an absolute URL. Use the base URL of your Home Assistant instance, for example
-            https://ha.example.com.
+            Prepended when entity_picture does not already start with http://
+            or https://. An absolute URL, including one on another host, is
+            sent unchanged. Use the external base URL of this Home Assistant,
+            for example https://ha.example.com.
           default: ""
           selector:
             text: {}
-    matrix_section:
-      name: WLED matrix
+    panel_section:
+      name: Panels
       icon: mdi:view-grid
       collapsed: false
       input:
-        wled_device:
-          name: WLED device
+        panels:
+          name: Panels
           description: >-
-            WLED device in Home Assistant. When set, the DDP host is the host
-            in that device's configuration URL and the WLED host field is
-            ignored. Leave this empty and set WLED host when the endpoint is
-            not a WLED device. Select one device.
-          default: []
+            One entry per matrix. A WLED device supplies the DDP host from
+            its configuration URL and the host field is ignored. Without a
+            device, set the host. Width, height, and the image fields default
+            to 64, 64, saturation 1.2, contrast 0.9, sharpen 0.5, and gamma 0.5.
           selector:
-            device:
+            object:
               multiple: true
-              integration: wled
-        wled_host:
-          name: WLED host
-          description: >-
-            Hostname, IP address, or URL of the DDP endpoint. Ignored when a
-            WLED device is selected. A URL such as http://panel.example is
-            reduced to its host. Select a WLED device or set this field.
-          default: ""
-          selector:
-            text: {}
-        wled_width:
-          name: Width
-          description: Matrix width in pixels.
-          default: 64
-          selector:
-            number:
-              min: 1
-              max: 512
-              step: 1
-              mode: box
-        wled_height:
-          name: Height
-          description: Matrix height in pixels.
-          default: 64
-          selector:
-            number:
-              min: 1
-              max: 512
-              step: 1
-              mode: box
-        segment_id:
-          name: Segment ID
-          description: WLED segment that receives the picture. Use 0 for the main segment.
-          default: 0
-          selector:
-            number:
-              min: 0
-              max: 32
-              step: 1
-              mode: box
-        wled_lights:
-          name: WLED lights
-          description: >-
-            Turned off after playback has been stopped for five seconds.
-            Leave empty to clear the stream only.
-          default: []
-          selector:
-            entity:
-              multiple: true
-              filter:
-                - domain: light
-    image_section:
-      name: Image
-      icon: mdi:image-filter-center-focus
-      collapsed: false
-      input:
-        saturation:
-          name: Saturation
-          description: >-
-            1 leaves colour unchanged. Above 1 the colours get stronger. The
-            outdoor HUB75, the indoor HUB75, and the Colorlight receiver all
-            use 1.2. The service accepts 0 to 2.
-          default: 1.2
-          selector:
-            number:
-              min: 0
-              max: 2
-              step: 0.1
-              mode: box
-        contrast:
-          name: Contrast
-          description: >-
-            1 leaves the tonal range unchanged. Below 1 opens the shadows.
-            Above 1 deepens them. Outdoor HUB75: 0.9. Indoor HUB75: 1.4 in a
-            dark room, or 0.9 when it uses the outdoor set. Colorlight: 1.1.
-            The service accepts 0.5 to 2.
-          default: 0.9
-          selector:
-            number:
-              min: 0.5
-              max: 2
-              step: 0.1
-              mode: box
-        sharpen:
-          name: Sharpen
-          description: >-
-            0 leaves the scaled picture soft. 0.5 restores edges after the
-            resize. That is the value on the outdoor HUB75, the indoor HUB75,
-            and the Colorlight receiver. The service accepts 0 to 2.
-          default: 0.5
-          selector:
-            number:
-              min: 0
-              max: 2
-              step: 0.1
-              mode: box
-        gamma:
-          name: Gamma
-          description: >-
-            1 is linear. Below 1 lifts midtones. Above 1 darkens them. Outdoor
-            HUB75: 0.5, so the picture stays readable in daylight. Indoor
-            HUB75: 0.7 in a dark room, or 0.5 with the outdoor set. Colorlight:
-            0.6. The service accepts 0.1 to 3.
-          default: 0.5
-          selector:
-            number:
-              min: 0.1
-              max: 3
-              step: 0.1
-              mode: box
-
-variables:
-  player: !input media_player
-  picture_url_prefix: !input picture_url_prefix
-  wled_lights: !input wled_lights
-  wled_device: !input wled_device
-  wled_host_input: !input wled_host
-  wled_device_id: >-
-    {% set chosen = wled_device | default('', true) %}
-    {% if chosen is iterable and chosen is not string %}
-      {% set chosen = chosen | reject('eq', '') | list %}
-      {% set chosen = chosen[0] if chosen | length > 0 else '' %}
-    {% endif %}
-    {{ chosen if chosen is string else '' }}
-  wled_manual_host: >-
-    {% set manual = (wled_host_input | default('', true) | string).strip() %}
-    {% if '://' in manual %}
-      {% set manual = manual.split('://', 1)[-1] %}
-    {% endif %}
-    {% set manual = manual.split('/', 1)[0] %}
-    {% if ':' in manual and not manual.startswith('[') %}
-      {% set manual = manual.split(':', 1)[0] %}
-    {% endif %}
-    {{ manual }}
-  wled_endpoint: >-
-    {% set device_id = wled_device_id | trim %}
-    {% if device_id | length > 0 %}
-      {% set url = device_attr(device_id, 'configuration_url') %}
-      {% if url %}
-        {% set host = url.split('://', 1)[-1].split('/', 1)[0] %}
-        {% if ':' in host and not host.startswith('[') %}
-          {% set host = host.split(':', 1)[0] %}
-        {% endif %}
-        {{ host }}
-      {% endif %}
-    {% else %}
-      {{ wled_manual_host | trim }}
-    {% endif %}
+              label_field: name
+              description_field: host
+              fields:
+                name:
+                  label: Name
+                  required: true
+                  selector:
+                    text:
+                device:
+                  label: WLED device
+                  selector:
+                    device:
+                      integration: wled
+                host:
+                  label: DDP host
+                  selector:
+                    text:
+                width:
+                  label: Width
+                  default: 64
+                  selector:
+                    number:
+                      min: 1
+                      max: 512
+                      step: 1
+                      mode: box
+                height:
+                  label: Height
+                  default: 64
+                  selector:
+                    number:
+                      min: 1
+                      max: 512
+                      step: 1
+                      mode: box
+                segment:
+                  label: Segment ID
+                  default: 0
+                  selector:
+                    number:
+                      min: 0
+                      max: 32
+                      step: 1
+                      mode: box
+                saturation:
+                  label: Saturation
+                  default: 1.2
+                  selector:
+                    number:
+                      min: 0
+                      max: 2
+                      step: 0.1
+                      mode: box
+                contrast:
+                  label: Contrast
+                  default: 0.9
+                  selector:
+                    number:
+                      min: 0.5
+                      max: 2
+                      step: 0.1
+                      mode: box
+                sharpen:
+                  label: Sharpen
+                  default: 0.5
+                  selector:
+                    number:
+                      min: 0
+                      max: 2
+                      step: 0.1
+                      mode: box
+                gamma:
+                  label: Gamma
+                  default: 0.5
+                  selector:
+                    number:
+                      min: 0.1
+                      max: 3
+                      step: 0.1
+                      mode: box
+                lights:
+                  label: Lights off
+                  selector:
+                    entity:
+                      multiple: true
+                      filter:
+                        - domain: light
 
 triggers:
   - trigger: state
-    entity_id: !input media_player
-    to:
-      - playing
+    entity_id: !input primary_player
   - trigger: state
-    entity_id: !input media_player
-    attribute: entity_picture
+    entity_id: !input fallback_players
 
-conditions:
-  - condition: not
-    conditions:
-      - condition: state
-        entity_id: !input media_player
-        state:
-          - paused
-          - idle
-          - "off"
+variables:
+  primary: !input primary_player
+  fallbacks: !input fallback_players
+  prefix: !input picture_url_prefix
+  panels: !input panels
+  active: >-
+    {% set players = [primary] + (fallbacks | default([]) | list) %}
+    {% set ns = namespace(active='') %}
+    {% for p in players if p %}
+      {% if ns.active == '' and is_state(p, 'playing') %}
+        {% set ns.active = p %}
+      {% endif %}
+    {% endfor %}
+    {{ ns.active }}
+  targets: >-
+    {% set ns = namespace(items=[]) %}
+    {% for raw in panels %}
+      {% set device = (raw.device | default('', true) | string).strip() %}
+      {% set host = '' %}
+      {% if device %}
+        {% set url = device_attr(device, 'configuration_url') or '' %}
+        {% if url %}
+          {% set host = url.split('://', 1)[-1].split('/', 1)[0] %}
+          {% if ':' in host and not host.startswith('[') %}
+            {% set host = host.split(':', 1)[0] %}
+          {% endif %}
+        {% endif %}
+      {% else %}
+        {% set host = (raw.host | default('', true) | string).strip() %}
+        {% if '://' in host %}
+          {% set host = host.split('://', 1)[-1] %}
+        {% endif %}
+        {% set host = host.split('/', 1)[0] %}
+        {% if ':' in host and not host.startswith('[') %}
+          {% set host = host.split(':', 1)[0] %}
+        {% endif %}
+      {% endif %}
+      {% set lights = raw.lights | default([], true) %}
+      {% if lights is string %}
+        {% set lights = [lights] if lights else [] %}
+      {% endif %}
+      {% set missing = 1 if host | length == 0 else 0 %}
+      {% set ns.items = ns.items + [{
+        'name': raw.name | default(host, true),
+        'host': host,
+        'width': raw.width | default(64) | int,
+        'height': raw.height | default(64) | int,
+        'segment': raw.segment | default(0) | int,
+        'saturation': raw.saturation | default(1.2) | float,
+        'contrast': raw.contrast | default(0.9) | float,
+        'sharpen': raw.sharpen | default(0.5) | float,
+        'gamma': raw.gamma | default(0.5) | float,
+        'lights': lights,
+        'missing': missing
+      }] %}
+    {% endfor %}
+    {{ ns.items }}
 
 actions:
-  - choose:
-      - conditions:
-          - condition: template
-            value_template: >-
-              {{ (wled_device_id | trim | length > 0)
-                 and (wled_endpoint | trim | length == 0) }}
-        sequence:
-          - stop: The selected WLED device has no configuration URL
-            error: true
-      - conditions:
-          - condition: template
-            value_template: "{{ wled_endpoint | trim | length == 0 }}"
-        sequence:
-          - stop: Select a WLED device or set a WLED host
-            error: true
-  - action: ha_ddp2wled.stop_ddp_stream
-    data:
-      clear_display: true
-      wled_host: "{{ wled_endpoint }}"
-  - repeat:
-      while:
-        - condition: state
-          entity_id: !input media_player
-          state:
-            - playing
-      sequence:
-        - if:
+  - if:
+      - condition: template
+        value_template: "{{ targets | length == 0 }}"
+    then:
+      - stop: Add at least one panel
+        error: true
+  - if:
+      - condition: template
+        value_template: "{{ targets | selectattr('missing') | list | count > 0 }}"
+    then:
+      - stop: A panel needs a WLED device with a configuration URL, or a DDP host
+        error: true
+  - if:
+      - condition: template
+        value_template: "{{ active | length > 0 }}"
+    then:
+      - repeat:
+          while:
             - condition: template
-              value_template: "{{ state_attr(player, 'entity_picture') }}"
-          then:
-            - action: ha_ddp2wled.send_to_wled_ddp
-              data:
-                segment_id: !input segment_id
-                timeout: 10
-                brightness: 255
-                auto_bright: true
-                clip_hist_percent: 0
-                keepalive_seconds: 5
-                keepalive_interval: 0.3
-                image_url: >-
-                  {% set picture = state_attr(player, 'entity_picture') %}
+              value_template: "{{ active | length > 0 and is_state(active, 'playing') }}"
+          sequence:
+            - variables:
+                picture_url: >-
+                  {% set picture = state_attr(active, 'entity_picture') or '' %}
                   {% if picture.startswith('http://') or picture.startswith('https://') %}
                     {{ picture }}
-                  {% else %}
-                    {{ picture_url_prefix }}{{ picture }}
+                  {% elif picture %}
+                    {{ prefix }}{{ picture }}
                   {% endif %}
-                wled_host: "{{ wled_endpoint }}"
-                width: !input wled_width
-                height: !input wled_height
-                saturation: !input saturation
-                contrast: !input contrast
-                sharpen: !input sharpen
-                gamma: !input gamma
-        - delay:
-            seconds: 1
-  - delay:
-      seconds: 5
-  - if:
-      - condition: state
-        entity_id: !input media_player
-        state:
-          - paused
-          - idle
-          - "off"
-    then:
+            - if:
+                - condition: template
+                  value_template: "{{ picture_url | trim | length > 0 }}"
+              then:
+                - repeat:
+                    for_each: "{{ targets }}"
+                    sequence:
+                      - action: ha_ddp2wled.send_to_wled_ddp
+                        continue_on_error: true
+                        data:
+                          segment_id: "{{ repeat.item.segment }}"
+                          timeout: 10
+                          brightness: 255
+                          auto_bright: true
+                          clip_hist_percent: 0
+                          keepalive_seconds: 5
+                          keepalive_interval: 0.3
+                          image_url: "{{ picture_url }}"
+                          wled_host: "{{ repeat.item.host }}"
+                          width: "{{ repeat.item.width }}"
+                          height: "{{ repeat.item.height }}"
+                          saturation: "{{ repeat.item.saturation }}"
+                          contrast: "{{ repeat.item.contrast }}"
+                          sharpen: "{{ repeat.item.sharpen }}"
+                          gamma: "{{ repeat.item.gamma }}"
+            - delay:
+                seconds: 1
+      - delay:
+          seconds: 5
       - if:
           - condition: template
-            value_template: "{{ wled_lights | length > 0 }}"
+            value_template: "{{ not is_state(active, 'playing') }}"
         then:
-          - action: light.turn_off
-            continue_on_error: true
-            target:
-              entity_id: !input wled_lights
-      - action: ha_ddp2wled.stop_ddp_stream
-        data:
-          clear_display: true
-          wled_host: "{{ wled_endpoint }}"
+          - repeat:
+              for_each: "{{ targets }}"
+              sequence:
+                - if:
+                    - condition: template
+                      value_template: "{{ repeat.item.lights | length > 0 }}"
+                  then:
+                    - action: light.turn_off
+                      continue_on_error: true
+                      target:
+                        entity_id: "{{ repeat.item.lights }}"
+                - action: ha_ddp2wled.stop_ddp_stream
+                  continue_on_error: true
+                  data:
+                    clear_display: true
+                    wled_host: "{{ repeat.item.host }}"
+    else:
+      - delay:
+          seconds: 5
+      - variables:
+          still_active: >-
+            {% set players = [primary] + (fallbacks | default([]) | list) %}
+            {% set ns = namespace(active='') %}
+            {% for p in players if p %}
+              {% if ns.active == '' and is_state(p, 'playing') %}
+                {% set ns.active = p %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.active }}
+      - if:
+          - condition: template
+            value_template: "{{ still_active | trim | length == 0 }}"
+        then:
+          - repeat:
+              for_each: "{{ targets }}"
+              sequence:
+                - if:
+                    - condition: template
+                      value_template: "{{ repeat.item.lights | length > 0 }}"
+                  then:
+                    - action: light.turn_off
+                      continue_on_error: true
+                      target:
+                        entity_id: "{{ repeat.item.lights }}"
+                - action: ha_ddp2wled.stop_ddp_stream
+                  continue_on_error: true
+                  data:
+                    clear_display: true
+                    wled_host: "{{ repeat.item.host }}"
 
 mode: restart
