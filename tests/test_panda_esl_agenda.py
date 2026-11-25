@@ -313,3 +313,29 @@ async def test_emoji_do_not_overlap_and_sit_before_the_text(hass):
     assert pics[0]["x"] + pics[0]["xsize"] == pics[1]["x"]  # no gap between emoji
     assert text["x"] - (pics[1]["x"] + pics[1]["xsize"]) == 3
     assert pics[0]["xsize"] == 20
+
+
+async def test_tasks_beyond_days_ahead_are_left_out(hass):
+    today = dt_util.now().date()
+    td = {"todo.shopping": {"items": [
+        {"summary": "Due in window", "uid": "1", "status": "needs_action", "due": (today + timedelta(days=3)).isoformat()},
+        {"summary": "Due beyond window", "uid": "2", "status": "needs_action", "due": (today + timedelta(days=8)).isoformat()},
+        {"summary": "Overdue item", "uid": "3", "status": "needs_action", "due": (today - timedelta(days=2)).isoformat()},
+        {"summary": "No date item", "uid": "4", "status": "needs_action"},
+    ]}}
+    calls, _ = await setup(hass, td=td, ev={c: {"events": []} for c in CAL})
+    _, data = await run(hass, calls)
+    t = texts(data)
+    assert "Due in window" in t and "Overdue item" in t and "No date item" in t
+    assert "Due beyond window" not in t
+    assert "Dec 03" not in t and "Thu 03 Dec" not in t
+
+
+async def test_days_ahead_widens_the_task_window(hass):
+    today = dt_util.now().date()
+    td = {"todo.shopping": {"items": [
+        {"summary": "Due beyond window", "uid": "2", "status": "needs_action", "due": (today + timedelta(days=8)).isoformat()},
+    ]}}
+    calls, _ = await setup(hass, {"days_ahead": 14}, td=td, ev={c: {"events": []} for c in CAL})
+    _, data = await run(hass, calls)
+    assert "Due beyond window" in texts(data)

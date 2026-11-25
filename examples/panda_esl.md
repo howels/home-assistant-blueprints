@@ -35,7 +35,7 @@ Replace `panda_esl_agenda.yaml` with the file name of another blueprint from the
 | Header | Title and the date. |
 | Events | Time or day column, then the summary, sorted by start time. An event today shows its time in red, or `Now`. A later event starts with the short day name, such as `Thu 09:00`. An all-day event shows `Today` or the day name. |
 | Divider | One black line, drawn only when both lists have rows. |
-| Tasks | Checkbox, the due day, then the summary. A task due today has no day. A later task shows the short day name. An overdue task shows the day name and date in red, such as `Sun 22`. Tasks with no due date follow the dated tasks. |
+| Tasks | Checkbox, the due day, then the summary. A task due today has no day. A later task shows the short day name. An overdue task shows the day name and date in red, such as `Sun 22`. Tasks with no due date follow the dated tasks. Tasks due after the Days ahead window are left out, as are events after it. Overdue tasks always appear. |
 | Last row | `+N more` in red when more entries exist than rows fit. |
 
 The event text and the task text each start in their own column, so the checkbox sits close to its text when no task has a day.

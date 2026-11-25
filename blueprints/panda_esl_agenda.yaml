@@ -380,6 +380,7 @@ actions:
             {% else %}
               {% set due_text = as_local(due).strftime('%a') %}
             {% endif %}
+            {% if days is none or days <= (days_ahead | int) %}
             {% set raw = it.get('summary') or '' %}
             {% set ns.rows = ns.rows + [{
               'ts': as_timestamp(due) if due is not none else 4102444800, 'lead': due_text,
@@ -387,6 +388,7 @@ actions:
               'task': true, 'raw': raw,
               'summary': (raw | regex_replace(strip_pattern, '') | regex_replace('\\s{2,}', ' ')) | trim
             }] %}
+            {% endif %}
           {% endfor %}
         {% endfor %}
         {{ ns.rows | sort(attribute='ts') }}
