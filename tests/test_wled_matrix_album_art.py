@@ -23,7 +23,7 @@ FALLBACK_A = "media_player.fallback_a"
 FALLBACK_B = "media_player.fallback_b"
 
 
-async def pump(hass, n=300):
+async def pump(hass, n=3000):
     for _ in range(n):
         await asyncio.sleep(0)
 
@@ -192,6 +192,67 @@ async def test_stopping_clears_every_panel_and_turns_off_the_device_light(hass, 
     assert hosts[-2:] == ["wled-hub75.example", "portal.example"]
     offs = [data["entity_id"] for domain, service, data in calls if service == "turn_off"]
     assert offs == [["light.wled_hub75"]]
+
+
+def stops(calls):
+    return [data["wled_host"] for domain, service, data in calls if service == "stop_ddp_stream"]
+
+
+async def test_position_updates_do_not_restart_the_run(hass):
+    calls = await setup(hass, [panel("hub75", "wled-hub75.example", turn_on=False, turn_off=False)])
+    hass.states.async_set(PRIMARY, "playing", {"entity_picture": "/cover", "media_position": 1})
+    await pump(hass)
+    sent_before = len(sends(calls))
+    stops_before = len(stops(calls))
+    assert sent_before == 1
+
+    for position in range(2, 8):
+        hass.states.async_set(PRIMARY, "playing", {"entity_picture": "/cover", "media_position": position})
+        await pump(hass)
+    assert len(sends(calls)) == sent_before
+    assert len(stops(calls)) == stops_before
+
+
+async def test_new_picture_is_sent_without_clearing(hass):
+    calls = await setup(hass, [panel("hub75", "wled-hub75.example", turn_on=False, turn_off=False)])
+    hass.states.async_set(PRIMARY, "playing", {"entity_picture": "/one"})
+    await pump(hass)
+    assert stops(calls) == ["wled-hub75.example"]
+    assert sends(calls)[-1]["image_url"] == "https://ha.example/one"
+
+    hass.states.async_set(PRIMARY, "playing", {"entity_picture": "/two"})
+    await pump(hass)
+    assert sends(calls)[-1]["image_url"] == "https://ha.example/two"
+    assert stops(calls) == ["wled-hub75.example"]
+
+    hass.states.async_set(PRIMARY, "paused", {"entity_picture": "/two"})
+    hass.states.async_set(PRIMARY, "playing", {"entity_picture": "/two"})
+    await pump(hass)
+    assert len(stops(calls)) == 2
+
+
+async def test_picture_is_sent_once_per_run_not_every_second(hass, freezer):
+    calls = await setup(hass, [panel("hub75", "wled-hub75.example", turn_on=False, turn_off=False)])
+    hass.states.async_set(PRIMARY, "playing", {"entity_picture": "/one"})
+    await pump(hass)
+    freezer.tick(timedelta(seconds=10))
+    async_fire_time_changed(hass)
+    await pump(hass)
+    assert len(sends(calls)) == 1
+
+
+async def test_send_timeout_and_image_ranges_are_applied(hass):
+    calls = await setup(
+        hass,
+        [panel("hub75", "wled-hub75.example", turn_on=False, turn_off=False, sharpen=1, gamma=2)],
+        extra={"send_timeout": 3},
+    )
+    hass.states.async_set(PRIMARY, "playing", {"entity_picture": "/one"})
+    await pump(hass)
+    sent = sends(calls)[-1]
+    assert sent["timeout"] == 3
+    assert sent["sharpen"] == 1
+    assert sent["gamma"] == 2
 
 
 async def test_keepalive_is_taken_from_the_panel(hass):

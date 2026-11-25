@@ -10,9 +10,11 @@ blueprint:
 
     Players. The primary player is used while its state is playing. Otherwise
     the fallback players are checked in the order they are entered, and the
-    first one that is playing is used. Any change to a watched player restarts
-    the run. The picture sent is still the active player's picture, so a
-    change to another player does not replace the art.
+    first one that is playing is used. A change of state or of
+    entity_picture on a watched player restarts the run. Other attribute
+    updates, such as the playback position, do not. The picture sent is
+    still the active player's picture, so a change to another player does not
+    replace the art.
 
 
     Panels. Each panel is sent the same picture with its own size and image
@@ -30,13 +32,21 @@ blueprint:
     Assistant, for example https://ha.example.com.
 
 
-    The run restarts when a watched player changes. It clears each stream,
-    then sends the picture once a second while the active player stays
-    playing. When playback leaves that player, the run waits five seconds.
-    If no watched player is playing, the lights are put back, any stop
-    preset is selected, and the streams are cleared. A new active player
-    during that wait restarts the run, so the panels are not cleared between
-    tracks.
+    A state change starts a run. The run clears each stream, sends the
+    picture once to each panel, and waits while the active player stays
+    playing. A new picture restarts the run and sends the new picture without
+    clearing the streams first. When playback leaves that player, the run
+    waits five seconds. If no watched player is playing, the lights are put
+    back and the streams are cleared. A new active player during that wait
+    restarts the run, so the panels are not cleared between tracks.
+
+    Load on the panel. The ha_ddp2wled service posts to the panel's
+    /json/state before each DDP frame, including every keepalive refresh, and
+    posts the whole frame once the keepalive window ends. A 64 by 64 frame
+    is about 96 KB of JSON. A small ESP32 with little free heap and a weak
+    Wi-Fi signal, such as the indoor HUB75, may drop those requests. Use a
+    keepalive of 1 or 2 seconds on such a panel. The send timeout input
+    bounds how long one slow panel can delay the panels after it.
 
 
     Lights. A panel with a WLED device uses that device's own light entities.
@@ -54,7 +64,8 @@ blueprint:
     Keepalive defaults to 5 seconds at 0.3 second intervals. A panel can set
     keepalive to 0, which the Pixoo automations did. 1 leaves saturation,
     contrast, and gamma unchanged. 0 leaves sharpen off. The service accepts
-    saturation 0 to 2, contrast 0.5 to 2, sharpen 0 to 2, and gamma 0.1 to 3.
+    saturation 0 to 2, contrast 0 to 2, sharpen 0 to 1, and gamma 0.1 to 2.
+    The blueprint limits sharpen and gamma to those ranges.
 
 
     Recorded settings from the previous per-panel automations. One automation
@@ -145,11 +156,24 @@ blueprint:
         clear_before_send:
           name: Clear before sending
           description: >-
-            Stop the DDP stream and clear the panel before the first picture
-            of a run. The existing automations do this.
+            Stop the DDP stream and clear the panel when a run starts from a
+            state change. A new picture on the same player does not clear.
           default: true
           selector:
             boolean: {}
+        send_timeout:
+          name: Send timeout
+          description: >-
+            Seconds the DDP service waits on each panel's HTTP and UDP
+            requests. A panel that does not answer delays the panels after it
+            by at most this long for each request.
+          default: 5
+          selector:
+            number:
+              min: 1
+              max: 60
+              step: 1
+              mode: box
     panel_section:
       name: Panels
       icon: mdi:view-grid
@@ -233,7 +257,7 @@ blueprint:
                   selector:
                     number:
                       min: 0
-                      max: 2
+                      max: 1
                       step: 0.1
                       mode: box
                 gamma:
@@ -242,7 +266,7 @@ blueprint:
                   selector:
                     number:
                       min: 0.1
-                      max: 3
+                      max: 2
                       step: 0.1
                       mode: box
                 keepalive:
@@ -267,9 +291,29 @@ blueprint:
 
 triggers:
   - trigger: state
+    id: state
     entity_id: !input primary_player
+    to: null
   - trigger: state
+    id: state
     entity_id: !input fallback_players
+    to: null
+  - trigger: state
+    id: picture
+    entity_id: !input primary_player
+    attribute: entity_picture
+  - trigger: state
+    id: picture
+    entity_id: !input fallback_players
+    attribute: entity_picture
+
+conditions:
+  - condition: template
+    value_template: >-
+      {{ trigger.id != 'picture'
+         or trigger.from_state is none
+         or trigger.to_state is none
+         or trigger.from_state.state == trigger.to_state.state }}
 
 variables:
   primary: !input primary_player
@@ -279,6 +323,8 @@ variables:
   session_name: !input session_name
   light_session: !input light_session
   clear_before_send: !input clear_before_send
+  send_timeout: !input send_timeout
+  clear_first: "{{ (clear_before_send | bool(false)) and trigger.id == 'state' }}"
   active: >-
     {% set players = [primary] + (fallbacks | default([]) | list) %}
     {% set ns = namespace(active='') %}
@@ -328,8 +374,8 @@ variables:
         'segment': raw.segment | default(0) | int,
         'saturation': raw.saturation | default(1.2) | float,
         'contrast': raw.contrast | default(0.9) | float,
-        'sharpen': raw.sharpen | default(0.5) | float,
-        'gamma': raw.gamma | default(0.5) | float,
+        'sharpen': [[raw.sharpen | default(0.5) | float, 0] | max, 1] | min,
+        'gamma': [[raw.gamma | default(0.5) | float, 0.1] | max, 2] | min,
         'keepalive': raw.keepalive | default(5) | int,
         'lights': lights.items,
         'turn_on': raw.turn_on | default(true),
@@ -391,7 +437,7 @@ actions:
                     entity_id: "{{ repeat.item.lights }}"
       - if:
           - condition: template
-            value_template: "{{ clear_before_send }}"
+            value_template: "{{ clear_first }}"
         then:
           - repeat:
               for_each: "{{ targets }}"
@@ -401,46 +447,40 @@ actions:
                   data:
                     clear_display: true
                     wled_host: "{{ repeat.item.host }}"
-      - repeat:
-          while:
-            - condition: template
-              value_template: "{{ active | length > 0 and is_state(active, 'playing') }}"
-          sequence:
-            - variables:
-                picture_url: >-
-                  {% set picture = state_attr(active, 'entity_picture') or '' %}
-                  {% if picture.startswith('http://') or picture.startswith('https://') %}
-                    {{ picture }}
-                  {% elif picture %}
-                    {{ prefix }}{{ picture }}
-                  {% endif %}
-            - if:
-                - condition: template
-                  value_template: "{{ picture_url | trim | length > 0 }}"
-              then:
-                - repeat:
-                    for_each: "{{ targets }}"
-                    sequence:
-                      - action: ha_ddp2wled.send_to_wled_ddp
-                        continue_on_error: true
-                        data:
-                          segment_id: "{{ repeat.item.segment }}"
-                          timeout: 10
-                          brightness: 255
-                          auto_bright: true
-                          clip_hist_percent: 0
-                          keepalive_seconds: "{{ repeat.item.keepalive }}"
-                          keepalive_interval: 0.3
-                          image_url: "{{ picture_url }}"
-                          wled_host: "{{ repeat.item.host }}"
-                          width: "{{ repeat.item.width }}"
-                          height: "{{ repeat.item.height }}"
-                          saturation: "{{ repeat.item.saturation }}"
-                          contrast: "{{ repeat.item.contrast }}"
-                          sharpen: "{{ repeat.item.sharpen }}"
-                          gamma: "{{ repeat.item.gamma }}"
-            - delay:
-                seconds: 1
+      - variables:
+          picture_url: >-
+            {% set picture = state_attr(active, 'entity_picture') or '' %}
+            {% if picture.startswith('http://') or picture.startswith('https://') %}
+              {{ picture }}
+            {% elif picture %}
+              {{ prefix }}{{ picture }}
+            {% endif %}
+      - if:
+          - condition: template
+            value_template: "{{ picture_url | trim | length > 0 }}"
+        then:
+          - repeat:
+              for_each: "{{ targets }}"
+              sequence:
+                - action: ha_ddp2wled.send_to_wled_ddp
+                  continue_on_error: true
+                  data:
+                    segment_id: "{{ repeat.item.segment }}"
+                    timeout: "{{ send_timeout }}"
+                    brightness: 255
+                    auto_bright: true
+                    clip_hist_percent: 0
+                    keepalive_seconds: "{{ repeat.item.keepalive }}"
+                    keepalive_interval: 0.3
+                    image_url: "{{ picture_url | trim }}"
+                    wled_host: "{{ repeat.item.host }}"
+                    width: "{{ repeat.item.width }}"
+                    height: "{{ repeat.item.height }}"
+                    saturation: "{{ repeat.item.saturation }}"
+                    contrast: "{{ repeat.item.contrast }}"
+                    sharpen: "{{ repeat.item.sharpen }}"
+                    gamma: "{{ repeat.item.gamma }}"
+      - wait_template: "{{ not is_state(active, 'playing') }}"
       - delay:
           seconds: 5
       - variables:
