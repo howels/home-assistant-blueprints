@@ -29,6 +29,7 @@ Home Assistant blueprints by howels.
 1. Install the PANDA ESL integration (`https://github.com/moryoav/ha-panda`) and add the label as a device.
 2. In Home Assistant, open Settings > Automations & scenes > Blueprints > Import blueprint. Enter `https://github.com/howels/home-assistant-blueprints/blob/main/blueprints/panda_esl_agenda.yaml`. Use another `panda_esl_*.yaml` file name for the weather, to-do, calendar, or alerts display.
 3. Create one automation per label. `examples/panda_esl.md` describes the layout, the colours, and the emoji images.
+4. Optional: create an input_text helper with a maximum length of at least 32 and select it as Last sent helper. The blueprint then skips writes of an image that matches the previous write. Force push options override the skip.
 
 ## Install room_occupancy
 

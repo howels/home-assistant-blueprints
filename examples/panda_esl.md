@@ -46,6 +46,30 @@ When the panel has unused rows, a summary that does not fit one line wraps at a 
 
 The automation writes at Home Assistant start, when a calendar or to-do entity changes state, and on the update interval. It skips the write when both services fail.
 
+## Unchanged images
+
+Each blueprint hashes the payload it builds before it writes. The payload lists every element drawn, so an identical payload renders an identical image. With a last sent helper selected, the blueprint skips the write when the hash equals the hash stored after the previous write.
+
+1. Create an input_text helper for each label, with a maximum length of at least 32. Settings > Devices & services > Helpers > Create helper > Text.
+2. Select the helper in the Last sent helper input.
+
+| Input | Effect |
+|----|----|
+| Last sent helper | Holds the hash of the last write. Empty: every run writes. |
+| Force push | Writes at every run. |
+| Force push triggers | Writes once when a listed button or input_button entity changes state. The write skips the settle delay. |
+| Dry run | Never skips and never stores a hash. |
+
+The blueprint stores the hash after the write action returns without error. The write action `panda_esl.write_guarded` can return early, for example while the write lock switch is on. The blueprint still stores the hash in that case. Press a force push trigger to redraw after such a skip.
+
+Content that changes the payload at every run defeats the check:
+
+- Weather draws the update time at the right of the header. Turn off Show update time to let unchanged forecasts skip the write. The date remains and changes once a day.
+- Alerts draws the age of each alert, for example `25m`. The payload changes when an age text changes.
+- Agenda, calendar, and to-do draw due dates and event times only. Their payload changes when an item, a date, or the day changes.
+
+Without a helper, the Prevent duplicate send option of the integration is the only guard. It applies to `panda_esl.write_guarded` only and compares the image in memory, so it resets when Home Assistant restarts.
+
 ## Colours
 
 The label shows black, white, and red. The renderer reduces every image to those three colours:

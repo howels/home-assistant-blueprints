@@ -41,6 +41,20 @@ blueprint:
     as a checkerboard of red and black pixels, which reads as dark red on the
     label. The text font has no emoji glyphs, so the text is drawn with its
     emoji removed.
+
+
+    Unchanged images. Before each write the blueprint hashes the payload. With
+    a last sent helper selected, it skips the write when that hash equals the
+    hash stored after the previous write, so the panel is not redrawn for an
+    image that the label already shows. An identical payload renders an
+    identical image. The helper is an input_text entity with a maximum length
+    of at least 32 characters. The blueprint stores the hash after the write
+    action returns without error. A write that the integration skips, for
+    example while its write lock is on, still stores the hash. Force push
+    writes at every run. A force push trigger, such as a button entity, writes
+    once when it is pressed. A dry run never skips and never stores a hash.
+    Without a helper, every run writes and only the Prevent duplicate send
+    option of the integration, which guarded writes honour, can skip an image.
   input:
     display_section:
       name: Display
@@ -94,6 +108,37 @@ blueprint:
           default: false
           selector:
             boolean: {}
+        sent_helper:
+          name: Last sent helper
+          description: >-
+            input_text entity that holds a hash of the payload last written.
+            When set, an unchanged payload is not written again. Leave empty to
+            write at every run. The maximum length of the helper must be at
+            least 32.
+          default: ""
+          selector:
+            entity:
+              filter:
+                - domain: input_text
+        force_push:
+          name: Force push
+          description: >-
+            Writes at every run, even when the payload matches the last write.
+          default: false
+          selector:
+            boolean: {}
+        force_entities:
+          name: Force push triggers
+          description: >-
+            Buttons that write once when pressed, even when the payload
+            matches the last write.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: button
+                - domain: input_button
     alerts_section:
       name: Alerts
       icon: mdi:alert-circle
@@ -237,6 +282,9 @@ blueprint:
             text: {}
 
 variables:
+  sent_helper: !input sent_helper
+  force_push: !input force_push
+  dry_run: !input dry_run
   emoji_mode: !input emoji_mode
   emoji_image_url: !input emoji_image_url
   dither_brown: !input dither_brown
@@ -294,6 +342,9 @@ triggers:
     id: change
   - trigger: time_pattern
     minutes: !input update_minutes
+  - trigger: state
+    entity_id: !input force_entities
+    id: force
 
 actions:
   - if:
@@ -429,6 +480,17 @@ actions:
           }] %}
         {% endif %}
         {{ ns.p }}
+  - variables:
+      payload_hash: "{{ (payload | to_json(sort_keys=True) | sha256)[:32] }}"
+      force_write: "{{ force_push or (trigger.id | default('', true)) == 'force' }}"
+      sent_hash: "{{ states(sent_helper) if sent_helper else '' }}"
+      unchanged: >-
+        {{ sent_helper != '' and not force_write and not dry_run and sent_hash == payload_hash }}
+  - if:
+      - condition: template
+        value_template: "{{ unchanged }}"
+    then:
+      - stop: The payload matches the last write.
   - action: !input write_action
     target:
       device_id: !input display
@@ -436,5 +498,15 @@ actions:
       background: white
       dry_run: !input dry_run
       payload: "{{ payload }}"
+  - if:
+      - condition: template
+        value_template: "{{ sent_helper != '' and not dry_run }}"
+    then:
+      - action: input_text.set_value
+        target:
+          entity_id: "{{ sent_helper }}"
+        data:
+          value: "{{ payload_hash }}"
+        continue_on_error: true
 
 mode: restart
