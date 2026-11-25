@@ -4,6 +4,7 @@ Home Assistant blueprints by howels.
 
 | Path | Contents |
 |----|----|
+| `blueprints/pause_automations_on_service_restart.yaml` | Turns selected automations off while a service restarts, runs an action, and turns back on only the automations that were on. Restores them if that run is aborted. |
 | `blueprints/room_occupancy.yaml` | Restores a room's lighting on entry and saves it, then turns the lights off, when the room is clear. |
 | `blueprints/zha_aurora_dimmer_lights.yaml` | Controls up to two light groups from a ZHA Aurora dimmer or smart knob. Handles step events and absolute level events, with adjustable sensitivity. |
 | `blueprints/wled-matrix-album-art.yaml` | Shows a media player's album art on a WLED matrix and clears the matrix when playback stops. |

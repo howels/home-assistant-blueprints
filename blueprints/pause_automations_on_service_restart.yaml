@@ -1,0 +1,325 @@
+blueprint:
+  name: Pause automations while a service restarts
+  author: howels
+  domain: automation
+  source_url: https://github.com/howels/home-assistant-blueprints/blob/main/blueprints/pause_automations_on_service_restart.yaml
+  description: >-
+    Turns selected automations off while a service restarts, runs an action,
+    then turns on only the automations that were on. Automations that were
+    already off stay off.
+
+
+    The running sensor is a binary sensor that is on while the service is up.
+    When it leaves on, this automation stores which selected automations are
+    on and turns those off. When the sensor has been on for the settle time,
+    it turns them off again, runs the restart actions, waits the resume time,
+    and turns the stored automations back on.
+
+
+    The mask is kept in the memory input_text. Set that helper's maximum
+    length to 255. The stored value is MASK|PHASE|UNIX. MASK has one
+    character per selected automation, in the order configured here. 1 was
+    on and is restored. 0 was off and is left off. PHASE is d while the
+    service is down, w while the restart actions run, r during the resume
+    wait, and c during the confirm time after the automations are turned on.
+
+
+    automation.turn_off is stored by Home Assistant. If the restart action
+    fails, or if an automation reload stops this run, the later
+    automation.turn_on does not run and the selected automations stay off.
+    The mask is written before they are turned off, so it survives that. Once
+    a minute, and when Home Assistant starts, this automation reads the mask.
+    If the running sensor is on and the phase is due, it turns those
+    automations back on. Phase w is due after the action timeout. Phase r is
+    due after the resume time. Phase d is due when the sensor has been on for
+    the settle time plus the action timeout, which leaves the up trigger time
+    to run the restart actions. Phase c turns them on again if they are off,
+    then clears the mask after the confirm time. Home Assistant start treats
+    a stored mask as due immediately when the sensor is on, because a state
+    trigger does not fire for a sensor that is already on.
+
+
+    Errors from the restart actions are ignored. Runs are queued, so a second
+    restart waits until the current run has finished.
+  input:
+    running_sensor:
+      name: Running sensor
+      description: Binary sensor that is on while the service is running.
+      selector:
+        entity:
+          filter:
+            - domain: binary_sensor
+    automations:
+      name: Automations
+      description: Automations to turn off while the service restarts.
+      selector:
+        entity:
+          multiple: true
+          filter:
+            - domain: automation
+    memory:
+      name: Memory helper
+      description: >-
+        input_text that stores the mask. Set its maximum length to 255.
+      selector:
+        entity:
+          filter:
+            - domain: input_text
+    restart_actions:
+      name: Restart actions
+      description: >-
+        Runs after the automations are turned off and the service is back.
+        Failures are ignored.
+      default: []
+      selector:
+        action: {}
+    settle_seconds:
+      name: Settle time
+      description: How long the running sensor must stay on before the restart actions run.
+      default: 5
+      selector:
+        number:
+          min: 0
+          max: 300
+          step: 1
+          unit_of_measurement: s
+          mode: box
+    resume_seconds:
+      name: Resume delay
+      description: Wait after the restart actions before turning the automations back on.
+      default: 30
+      selector:
+        number:
+          min: 0
+          max: 600
+          step: 1
+          unit_of_measurement: s
+          mode: box
+    action_timeout_seconds:
+      name: Action timeout
+      description: >-
+        If the run is aborted during the restart actions, turn the automations
+        back on after this many seconds. Use a value longer than the restart
+        actions take.
+      default: 120
+      selector:
+        number:
+          min: 1
+          max: 900
+          step: 1
+          unit_of_measurement: s
+          mode: box
+    confirm_seconds:
+      name: Confirm time
+      description: >-
+        After turning the automations on, keep the mask for this long and turn
+        them on again if they are off. 0 clears the mask immediately.
+      default: 60
+      selector:
+        number:
+          min: 0
+          max: 900
+          step: 1
+          unit_of_measurement: s
+          mode: box
+
+mode: queued
+max: 10
+max_exceeded: silent
+
+variables:
+  memory_entity: !input memory
+  sensor_entity: !input running_sensor
+  automation_targets: !input automations
+  resume_seconds: !input resume_seconds
+  action_timeout_seconds: !input action_timeout_seconds
+  settle_seconds: !input settle_seconds
+  confirm_seconds: !input confirm_seconds
+  recover_due: >-
+    {% set targets = automation_targets if automation_targets is sequence and automation_targets is not string else [automation_targets] %}
+    {% set raw = states(memory_entity) %}
+    {% set parts = raw.split('|') if raw not in ['unknown', 'unavailable', 'none', ''] else [] %}
+    {% set mask_ok = parts | length == 3 and parts[0] is match('^[01]+$') and parts[0] | length == targets | count %}
+    {% if not mask_ok or not is_state(sensor_entity, 'on') %}
+      false
+    {% else %}
+      {% set phase = parts[1] %}
+      {% set age = as_timestamp(now()) - (parts[2] | int(0)) %}
+      {% set up_for = (now() - states[sensor_entity].last_changed).total_seconds() %}
+      {% set ns = namespace(pending=false) %}
+      {% for e in targets %}
+        {% if parts[0][loop.index0] == '1' and not is_state(e, 'on') %}
+          {% set ns.pending = true %}
+        {% endif %}
+      {% endfor %}
+      {{ (phase == 'c' and (ns.pending or age >= confirm_seconds | int))
+         or (phase == 'r' and age >= resume_seconds | int)
+         or (phase == 'w' and age >= action_timeout_seconds | int)
+         or (phase == 'd' and up_for >= (settle_seconds | int) + (action_timeout_seconds | int)) }}
+    {% endif %}
+
+triggers:
+  - trigger: state
+    id: down
+    entity_id: !input running_sensor
+    from: "on"
+    to:
+      - "off"
+      - "unavailable"
+  - trigger: state
+    id: up
+    entity_id: !input running_sensor
+    to: "on"
+    for:
+      seconds: !input settle_seconds
+  - trigger: time_pattern
+    id: recover
+    minutes: "/1"
+  - trigger: homeassistant
+    id: boot
+    event: start
+
+conditions:
+  - condition: template
+    value_template: "{{ trigger.id != 'recover' or recover_due }}"
+
+actions:
+  - variables:
+      targets: >-
+        {{ automation_targets if automation_targets is sequence and automation_targets is not string else [automation_targets] }}
+      # A leading m keeps a digit mask as text. Home Assistant would otherwise
+      # parse 110 as an integer, and a mask with a leading 0 would change value.
+      mask: >-
+        {% set raw = states(memory_entity) %}
+        {% set parts = raw.split('|') %}
+        {% set parsed = parts[0] if raw not in ['unknown', 'unavailable', 'none', ''] and parts | length == 3 and parts[0] is match('^[01]+$') and parts[0] | length == targets | count else '' %}
+        {{ ('m' ~ parsed) if parsed else '' }}
+      phase: "{% set parts = states(memory_entity).split('|') %}{% if mask and parts | length == 3 %}{{ parts[1] }}{% endif %}"
+      stored_ts: "{% set parts = states(memory_entity).split('|') %}{% if mask and parts | length == 3 %}{{ parts[2] | int(0) }}{% else %}0{% endif %}"
+      age: "{{ as_timestamp(now()) - (stored_ts | int(0)) }}"
+      sensor_on: "{{ is_state(sensor_entity, 'on') }}"
+      up_for: >-
+        {{ (now() - states[sensor_entity].last_changed).total_seconds() if states[sensor_entity] is not none else 0 }}
+      fresh_mask: >-
+        {% set ns = namespace(s='') %}
+        {% for e in targets %}
+          {% set ns.s = ns.s ~ ('1' if is_state(e, 'on') else '0') %}
+        {% endfor %}
+        {{ 'm' ~ ns.s }}
+      active_mask: "{{ mask if mask else fresh_mask }}"
+      restore_csv: >-
+        {% set ns = namespace(s='') %}
+        {% for e in targets %}
+          {% if active_mask[loop.index0 + 1:loop.index0 + 2] == '1' %}
+            {% set ns.s = ns.s ~ (',' if ns.s else '') ~ e %}
+          {% endif %}
+        {% endfor %}
+        {{ ns.s }}
+      restore_ids: "{{ restore_csv.split(',') | reject('eq', '') | list }}"
+      pending: "{{ restore_ids | reject('is_state', 'on') | list | count > 0 }}"
+      due: >-
+        {{ mask != '' and sensor_on and (
+             trigger.id == 'boot'
+             or (phase == 'c' and (pending or age | int >= confirm_seconds | int))
+             or (phase == 'r' and age | int >= resume_seconds | int)
+             or (phase == 'w' and age | int >= action_timeout_seconds | int)
+             or (phase == 'd' and up_for | int >= (settle_seconds | int) + (action_timeout_seconds | int))
+           ) }}
+  - choose:
+      - alias: Service went down
+        conditions:
+          - condition: trigger
+            id: down
+          - condition: template
+            value_template: "{{ not sensor_on }}"
+        sequence:
+          - action: input_text.set_value
+            target:
+              entity_id: "{{ memory_entity }}"
+            data:
+              value: "{{ active_mask[1:] }}|d|{{ as_timestamp(now()) | int }}"
+          - choose:
+              - alias: Turn off automations that are on
+                conditions:
+                  - condition: template
+                    value_template: "{{ restore_ids | count > 0 }}"
+                sequence:
+                  - action: automation.turn_off
+                    target:
+                      entity_id: "{{ restore_ids }}"
+          - stop: Service is down
+  - choose:
+      - alias: Run the restart actions
+        conditions:
+          - condition: template
+            value_template: >-
+              {{ trigger.id == 'up'
+                 or (trigger.id in ['recover', 'boot'] and sensor_on and phase in ['w', 'd'] and due) }}
+        sequence:
+          - action: input_text.set_value
+            target:
+              entity_id: "{{ memory_entity }}"
+            data:
+              value: "{{ active_mask[1:] }}|w|{{ as_timestamp(now()) | int }}"
+          - choose:
+              - alias: Turn off automations that were on
+                conditions:
+                  - condition: template
+                    value_template: "{{ restore_ids | count > 0 }}"
+                sequence:
+                  - action: automation.turn_off
+                    target:
+                      entity_id: "{{ restore_ids }}"
+          - alias: Restart the service
+            continue_on_error: true
+            sequence: !input restart_actions
+          - action: input_text.set_value
+            target:
+              entity_id: "{{ memory_entity }}"
+            data:
+              value: "{{ active_mask[1:] }}|r|{{ as_timestamp(now()) | int }}"
+          - delay:
+              seconds: "{{ resume_seconds | int }}"
+  - choose:
+      - alias: Turn the paused automations back on
+        conditions:
+          - condition: template
+            value_template: >-
+              {{ is_state(sensor_entity, 'on') and (
+                   trigger.id == 'up'
+                   or (trigger.id in ['recover', 'boot'] and due and phase in ['w', 'd', 'r', 'c'])
+                 ) }}
+        sequence:
+          - choose:
+              - alias: Turn on the stored automations
+                conditions:
+                  - condition: template
+                    value_template: "{{ restore_ids | count > 0 }}"
+                sequence:
+                  - action: automation.turn_on
+                    continue_on_error: true
+                    target:
+                      entity_id: "{{ restore_ids }}"
+          - variables:
+              still_off: "{{ restore_ids | reject('is_state', 'on') | list | count > 0 }}"
+          - choose:
+              - alias: Clear the mask
+                conditions:
+                  - condition: template
+                    value_template: "{{ not still_off and confirm_seconds | int == 0 }}"
+                sequence:
+                  - action: input_text.set_value
+                    target:
+                      entity_id: "{{ memory_entity }}"
+                    data:
+                      value: ""
+              - alias: Keep the mask until the automations stay on
+                conditions:
+                  - condition: template
+                    value_template: "{{ true }}"
+                sequence:
+                  - action: input_text.set_value
+                    target:
+                      entity_id: "{{ memory_entity }}"
+                    data:
+                      value: "{{ active_mask[1:] }}|c|{{ as_timestamp(now()) | int }}"
