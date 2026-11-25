@@ -10,6 +10,7 @@ from datetime import timedelta
 from pathlib import Path
 
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
@@ -54,7 +55,6 @@ async def setup(hass, panels, fallbacks=None, prefix="https://ha.example", extra
 
     hass.services.async_register("ha_ddp2wled", "send_to_wled_ddp", record)
     hass.services.async_register("ha_ddp2wled", "stop_ddp_stream", record)
-    hass.services.async_register("select", "select_option", record)
     if replace_light_services:
         hass.services.async_register("light", "turn_on", record)
         hass.services.async_register("light", "turn_off", record)
@@ -95,7 +95,7 @@ async def test_primary_is_sent_to_every_panel_and_paths_are_prefixed(hass):
     calls = await setup(
         hass,
         [
-            panel("hub75", "wled-hub75.example", lights=["light.wled_hub75"]),
+            panel("hub75", "wled-hub75.example"),
             panel("portal", "http://wled-matrix-portal-s3.example/info", width=128, height=128, contrast=1.1, gamma=0.6),
         ],
         fallbacks=[FALLBACK_A],
@@ -153,10 +153,32 @@ async def test_device_configuration_url_overrides_the_host(hass):
     assert sends(calls)[-1]["wled_host"] == "wled-from-device.example"
 
 
-async def test_stopping_clears_every_panel(hass, freezer):
+def wled_device(hass, ident, url):
+    entry = MockConfigEntry(domain="wled", data={"host": ident})
+    entry.add_to_hass(hass)
+    return dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={("wled", ident)},
+        name=ident,
+        configuration_url=url,
+    )
+
+
+async def test_stopping_clears_every_panel_and_turns_off_the_device_light(hass, freezer):
+    device = wled_device(hass, "hub75", "http://wled-hub75.example")
+    er.async_get(hass).async_get_or_create(
+        "light",
+        "wled",
+        "hub75-main",
+        suggested_object_id="wled_hub75",
+        device_id=device.id,
+    )
     calls = await setup(
         hass,
-        [panel("hub75", "wled-hub75.example", lights=["light.wled_hub75"]), panel("portal", "portal.example")],
+        [
+            panel("hub75", "ignored.example", device=device.id, turn_on=False, turn_off=True),
+            panel("portal", "portal.example", turn_on=False, turn_off=True),
+        ],
     )
     hass.states.async_set(PRIMARY, "playing", {"entity_picture": "/cover"})
     await pump(hass)
@@ -168,43 +190,16 @@ async def test_stopping_clears_every_panel(hass, freezer):
 
     hosts = [data["wled_host"] for domain, service, data in calls if service == "stop_ddp_stream"]
     assert hosts[-2:] == ["wled-hub75.example", "portal.example"]
-    offs = [data for domain, service, data in calls if service == "turn_off"]
-    assert offs[-1]["entity_id"] == ["light.wled_hub75"]
+    offs = [data["entity_id"] for domain, service, data in calls if service == "turn_off"]
+    assert offs == [["light.wled_hub75"]]
 
 
-async def test_effect_and_keepalive_and_stop_preset(hass, freezer):
-    calls = await setup(
-        hass,
-        [
-            panel(
-                "color",
-                "nanopi.example",
-                lights=["light.mm"],
-                turn_on=True,
-                on_effect="OnlyDDP",
-                effect_player="media_player.squeezelite",
-                effect_when_playing="Stephen4",
-                keepalive=0,
-                stop_select="select.pixoo_preset",
-                stop_option="Black",
-            )
-        ],
-    )
-    hass.states.async_set("media_player.squeezelite", "playing")
+async def test_keepalive_is_taken_from_the_panel(hass):
+    calls = await setup(hass, [panel("pixoo", "pixoo.example", keepalive=0, turn_on=False, turn_off=False)])
     hass.states.async_set(PRIMARY, "playing", {"entity_picture": "/cover"})
     await pump(hass)
-    ons = [data for domain, service, data in calls if service == "turn_on"]
-    assert ons[-1]["effect"] == "Stephen4"
     assert sends(calls)[-1]["keepalive_seconds"] == 0
-
-    hass.states.async_set(PRIMARY, "idle")
-    await pump(hass)
-    freezer.tick(timedelta(seconds=6))
-    async_fire_time_changed(hass)
-    await hass.async_block_till_done()
-    presets = [data for domain, service, data in calls if service == "select_option"]
-    assert presets[-1]["option"] == "Black"
-    assert presets[-1]["entity_id"] == ["select.pixoo_preset"]
+    assert [service for domain, service, data in calls if domain == "light"] == []
 
 
 async def test_session_restores_only_lights_that_were_off(hass, freezer):
@@ -238,10 +233,14 @@ async def test_session_restores_only_lights_that_were_off(hass, freezer):
     owned, kept = Lamp("owned", False), Lamp("kept", True)
     await hass.data[light.DATA_COMPONENT].async_add_entities([owned, kept])
     await hass.async_block_till_done()
+    device = wled_device(hass, "hub", "http://wled.example")
+    registry = er.async_get(hass)
+    registry.async_update_entity("light.owned", device_id=device.id)
+    registry.async_update_entity("light.kept", device_id=device.id)
 
     await setup(
         hass,
-        [panel("hub", "wled.example", lights=["light.owned", "light.kept"], turn_on=True, force_off=False)],
+        [panel("hub", "ignored.example", device=device.id, turn_on=True, turn_off=True)],
         extra={"light_session": "input_boolean.matrices", "session_name": "matrices"},
         replace_light_services=False,
     )

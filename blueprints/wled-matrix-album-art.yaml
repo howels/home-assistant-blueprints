@@ -39,15 +39,15 @@ blueprint:
     tracks.
 
 
-    Lights. A panel can turn its lights on with the music. The first playing
-    run of a session snapshots those lights into a scene, then turns them on.
-    The light session boolean remembers that this session took the snapshot.
-    A later track does not take a new snapshot. When the session ends, the
-    snapshot is restored, so a light is turned off only if this session
-    turned it on. Set a distinct light session name for each automation. A
-    panel marked force off is turned off at the end even if it was already
-    on. A panel can also set a select entity to an option when playback
-    stops, which is how the living-room Pixoo returns to the Black preset.
+    Lights. A panel with a WLED device uses that device's own light entities.
+    There is no separate lights list. Turn on with the music turns those
+    lights on when playback starts. Turn off with the music turns them off
+    when playback stops. A panel that does both, and has a light session,
+    snapshots the lights on the first playing run and restores that snapshot
+    at the end, so a light is turned off only if this session turned it on.
+    A later track does not take a new snapshot. Set a distinct light session
+    name for each automation. A host with no WLED device has no lights to
+    switch.
 
 
     Each send uses brightness 255, auto brightness, and histogram clip 0.
@@ -65,32 +65,25 @@ blueprint:
     Matrices. Primary media_player.meraki_mx64, then
     media_player.study_amplifier_4, then media_player.study_amplifier.
     wled-hub75.example is 64 by 64, saturation 1.2, contrast 0.9, sharpen 0.5,
-    gamma 0.5. It does not turn lights on. It forces off light.wled_hub75 and
-    light.hub_75_panel_main. The study player automation used contrast 1.4
-    and gamma 0.7 on that panel. wled-matrix-portal-s3.example is the same
-    image settings and also forces its lights off:
-    light.ledfx_ledfx_lan_wled_matrix_portal_s3_not_lan and
-    light.study_wled_matrix_portal_s3_main.
-    wled-matrix-portal-s3-2.example is 128 by 128, saturation 1.2, contrast
-    1.1, sharpen 0.5, gamma 0.6. It turns on
-    light.study_wled_matrix_portal_s3_2_main with the music.
-    nanopi-r3s.example is the same 128 by 128 image settings. It turns on
-    light.mm_2d95. The effect is Stephen4 while
-    media_player.moonlight_squeezelite_5 is playing, and OnlyDDP otherwise.
-    The LedFX automation always used Stephen4.
+    gamma 0.5. Turn on with the music is off. Turn off with the music is on.
+    The study player automation used contrast 1.4 and gamma 0.7 on that panel.
+    wled-matrix-portal-s3.example uses the same image settings and the same
+    light switches. wled-matrix-portal-s3-2.example is 128 by 128, saturation
+    1.2, contrast 1.1, sharpen 0.5, gamma 0.6, and both light switches are on.
+    nanopi-r3s.example is the same 128 by 128 image settings and is entered as a
+    host, so it has no WLED lights to switch.
 
 
     Pixoo in the living room. Primary media_player.living_room_audio_2, then
     media_player.plex_plex_for_android_tv_bravia_vh2.
     wled-pixoo64-2.example is 64 by 64, saturation 1.2, contrast 1.6, sharpen
-    0.5, gamma 1.2, keepalive 0. The Plex automation used contrast 1.1. When
-    playback stops, select.wled_pixoo64_2_not_lan_preset is set to Black.
+    0.5, gamma 1.2, keepalive 0. The Plex automation used contrast 1.1. Both
+    light switches are off.
 
 
     Pixoo in the kitchen. media_player.kitchen_audio_2 only.
     wled-pixoo64-1.example is 64 by 64, saturation 1.3, contrast 1.4, sharpen
-    0.2, gamma 1.2, keepalive 0. It turns on light.wled_pixoo64_1_not_lan with
-    the music.
+    0.2, gamma 1.2, keepalive 0. Both light switches are on.
   input:
     player_section:
       name: Players
@@ -139,10 +132,11 @@ blueprint:
           name: Light session
           description: >-
             Input boolean for that scene. Off means idle. The first playing
-            run snapshots the turn-on lights and turns this on. When playback
-            has stopped, the snapshot is restored and this is turned off.
-            Leave empty and turn-on lights are turned off at the end of the
-            run instead of restored.
+            run snapshots lights on panels that both turn on and turn off
+            with the music, then turns this on. When playback has stopped,
+            the snapshot is restored and this is turned off. Leave empty and
+            those lights are turned off at the end of the run instead of
+            restored.
           default: ""
           selector:
             entity:
@@ -251,39 +245,6 @@ blueprint:
                       max: 3
                       step: 0.1
                       mode: box
-                lights:
-                  label: Lights
-                  selector:
-                    entity:
-                      multiple: true
-                      filter:
-                        - domain: light
-                turn_on:
-                  label: Turn on with the music
-                  default: true
-                  selector:
-                    boolean: {}
-                force_off:
-                  label: Force off when music stops
-                  default: false
-                  selector:
-                    boolean: {}
-                on_effect:
-                  label: Effect when turned on
-                  default: ""
-                  selector:
-                    text: {}
-                effect_player:
-                  label: Effect player
-                  selector:
-                    entity:
-                      filter:
-                        - domain: media_player
-                effect_when_playing:
-                  label: Alternate effect
-                  default: ""
-                  selector:
-                    text: {}
                 keepalive:
                   label: Keepalive seconds
                   default: 5
@@ -293,17 +254,16 @@ blueprint:
                       max: 600
                       step: 1
                       mode: box
-                stop_select:
-                  label: Select at stop
+                turn_on:
+                  label: Turn on with the music
+                  default: true
                   selector:
-                    entity:
-                      filter:
-                        - domain: select
-                stop_option:
-                  label: Option at stop
-                  default: ""
+                    boolean: {}
+                turn_off:
+                  label: Turn off with the music
+                  default: true
                   selector:
-                    text: {}
+                    boolean: {}
 
 triggers:
   - trigger: state
@@ -351,9 +311,13 @@ variables:
           {% set host = host.split(':', 1)[0] %}
         {% endif %}
       {% endif %}
-      {% set lights = raw.lights | default([], true) %}
-      {% if lights is string %}
-        {% set lights = [lights] if lights else [] %}
+      {% set lights = namespace(items=[]) %}
+      {% if device %}
+        {% for entity in device_entities(device) %}
+          {% if entity.startswith('light.') %}
+            {% set lights.items = lights.items + [entity] %}
+          {% endif %}
+        {% endfor %}
       {% endif %}
       {% set missing = 1 if host | length == 0 else 0 %}
       {% set ns.items = ns.items + [{
@@ -367,14 +331,9 @@ variables:
         'sharpen': raw.sharpen | default(0.5) | float,
         'gamma': raw.gamma | default(0.5) | float,
         'keepalive': raw.keepalive | default(5) | int,
-        'lights': lights,
+        'lights': lights.items,
         'turn_on': raw.turn_on | default(true),
-        'force_off': raw.force_off | default(false),
-        'on_effect': raw.on_effect | default('', true),
-        'effect_player': raw.effect_player | default('', true),
-        'effect_when_playing': raw.effect_when_playing | default('', true),
-        'stop_select': raw.stop_select | default('', true),
-        'stop_option': raw.stop_option | default('', true),
+        'turn_off': raw.turn_off | default(true),
         'missing': missing
       }] %}
     {% endfor %}
@@ -400,7 +359,7 @@ actions:
       - variables:
           turn_on_lights: >-
             {% set ns = namespace(items=[]) %}
-            {% for t in targets if t.turn_on %}
+            {% for t in targets if t.turn_on and t.turn_off %}
               {% for light in t.lights %}
                 {% set ns.items = ns.items + [light] %}
               {% endfor %}
@@ -426,35 +385,10 @@ actions:
                 - condition: template
                   value_template: "{{ repeat.item.turn_on and repeat.item.lights | length > 0 }}"
               then:
-                - if:
-                    - condition: template
-                      value_template: >-
-                        {{ repeat.item.effect_player | length > 0
-                           and is_state(repeat.item.effect_player, 'playing')
-                           and repeat.item.effect_when_playing | length > 0 }}
-                  then:
-                    - action: light.turn_on
-                      continue_on_error: true
-                      target:
-                        entity_id: "{{ repeat.item.lights }}"
-                      data:
-                        effect: "{{ repeat.item.effect_when_playing }}"
-                  else:
-                    - if:
-                        - condition: template
-                          value_template: "{{ repeat.item.on_effect | length > 0 }}"
-                      then:
-                        - action: light.turn_on
-                          continue_on_error: true
-                          target:
-                            entity_id: "{{ repeat.item.lights }}"
-                          data:
-                            effect: "{{ repeat.item.on_effect }}"
-                      else:
-                        - action: light.turn_on
-                          continue_on_error: true
-                          target:
-                            entity_id: "{{ repeat.item.lights }}"
+                - action: light.turn_on
+                  continue_on_error: true
+                  target:
+                    entity_id: "{{ repeat.item.lights }}"
       - if:
           - condition: template
             value_template: "{{ clear_before_send }}"
@@ -543,7 +477,9 @@ actions:
                           sequence:
                             - if:
                                 - condition: template
-                                  value_template: "{{ repeat.item.turn_on and repeat.item.lights | length > 0 }}"
+                                  value_template: >-
+                                    {{ repeat.item.turn_on and repeat.item.turn_off
+                                       and repeat.item.lights | length > 0 }}
                               then:
                                 - action: light.turn_off
                                   continue_on_error: true
@@ -554,24 +490,14 @@ actions:
                       sequence:
                         - if:
                             - condition: template
-                              value_template: "{{ repeat.item.force_off and repeat.item.lights | length > 0 }}"
+                              value_template: >-
+                                {{ repeat.item.turn_off and not repeat.item.turn_on
+                                   and repeat.item.lights | length > 0 }}
                           then:
                             - action: light.turn_off
                               continue_on_error: true
                               target:
                                 entity_id: "{{ repeat.item.lights }}"
-                        - if:
-                            - condition: template
-                              value_template: >-
-                                {{ repeat.item.stop_select | length > 0
-                                   and repeat.item.stop_option | length > 0 }}
-                          then:
-                            - action: select.select_option
-                              continue_on_error: true
-                              target:
-                                entity_id: "{{ repeat.item.stop_select }}"
-                              data:
-                                option: "{{ repeat.item.stop_option }}"
                         - action: ha_ddp2wled.stop_ddp_stream
                           continue_on_error: true
                           data:
