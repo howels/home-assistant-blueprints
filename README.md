@@ -4,7 +4,9 @@ Home Assistant blueprints by howels.
 
 | Path | Contents |
 |----|----|
-| `blueprints/pause_automations_on_service_restart.yaml` | Turns selected automations off while a service restarts, runs an action, and turns back on only the automations that were on. Restores them if that run is aborted. |
+| `blueprints/pause_automations_on_service_restart.yaml` | Turns selected automations off while a service restarts, runs an action, and turns back on only the automations that were on. Restores them if that run is aborted. Usage with the Mosquitto broker and ha-midi is in the readmes below. |
+| `examples/mosquitto_broker.md` | The Mosquitto broker add-on running sensor used as that blueprint's service sensor. |
+| `examples/ha_midi_restart.md` | The `shell_command` that restarts the ha-midi bridge, and the SSH and systemd requirements. |
 | `blueprints/room_occupancy.yaml` | Restores a room's lighting on entry and saves it, then turns the lights off, when the room is clear. |
 | `blueprints/zha_aurora_dimmer_lights.yaml` | Controls up to two light groups from a ZHA Aurora dimmer or smart knob. Handles step events and absolute level events, with adjustable sensitivity. |
 | `blueprints/wled-matrix-album-art.yaml` | Shows a media player's album art on a WLED matrix and clears the matrix when playback stops. |
@@ -15,6 +17,10 @@ Home Assistant blueprints by howels.
 | `blueprints/panda_esl_*.yaml` emoji | Icon style emoji draws OpenMoji PNGs through the `dlimg` element. The panel shows black, white, and red, so red parts stay red, outlines turn black, and yellow is drawn as red. The default image URL points at jsDelivr; set the emoji image URL to a local folder to avoid the download. OpenMoji is licensed CC BY-SA 4.0. |
 | `examples/occupancy_scene_store.yaml` | Template sensor that keeps the saved snapshots across restarts. |
 | `tests/` | pytest suite that runs the blueprint in a real Home Assistant core. |
+
+## Pause automations on service restart
+
+`blueprints/pause_automations_on_service_restart.md` is the blueprint. `examples/mosquitto_broker.md` is the broker sensor this installation watches. `examples/ha_midi_restart.md` is the SSH command that restarts the bridge. The blueprint needs an `input_text` with maximum length 255 before the automation runs.
 
 ## Install room_occupancy
 
