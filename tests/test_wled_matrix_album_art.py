@@ -95,8 +95,8 @@ async def test_primary_is_sent_to_every_panel_and_paths_are_prefixed(hass):
     calls = await setup(
         hass,
         [
-            panel("hub75", "panel-a.example"),
-            panel("portal", "http://panel-b.example/info", width=128, height=128, contrast=1.1, gamma=0.6),
+            panel("matrix-a", "panel-a.example"),
+            panel("matrix-b", "http://panel-b.example/info", width=128, height=128, contrast=1.1, gamma=0.6),
         ],
         fallbacks=[FALLBACK_A],
     )
@@ -118,7 +118,7 @@ async def test_primary_is_sent_to_every_panel_and_paths_are_prefixed(hass):
 async def test_absolute_picture_is_not_prefixed_and_fallback_order_is_kept(hass):
     calls = await setup(
         hass,
-        [panel("hub75", "panel-a.example")],
+        [panel("matrix-a", "panel-a.example")],
         fallbacks=[FALLBACK_A, FALLBACK_B],
     )
     hass.states.async_set(FALLBACK_B, "playing", {"entity_picture": "https://cdn.example/b.jpg"})
@@ -141,12 +141,12 @@ async def test_device_configuration_url_overrides_the_host(hass):
     device = registry.async_get_or_create(
         config_entry_id=entry.entry_id,
         identifiers={("wled", "aabbccddeeff")},
-        name="Hub75",
+        name="Matrix A",
         configuration_url="http://device-host.example",
     )
     calls = await setup(
         hass,
-        [panel("hub75", "ignored.example", device=device.id)],
+        [panel("matrix-a", "ignored.example", device=device.id)],
     )
     hass.states.async_set(PRIMARY, "playing", {"entity_picture": "/cover"})
     await pump(hass)
@@ -165,19 +165,19 @@ def wled_device(hass, ident, url):
 
 
 async def test_stopping_clears_every_panel_and_turns_off_the_device_light(hass, freezer):
-    device = wled_device(hass, "hub75", "http://panel-a.example")
+    device = wled_device(hass, "matrix-a", "http://panel-a.example")
     er.async_get(hass).async_get_or_create(
         "light",
         "wled",
-        "hub75-main",
+        "matrix-a-main",
         suggested_object_id="panel_a_main",
         device_id=device.id,
     )
     calls = await setup(
         hass,
         [
-            panel("hub75", "ignored.example", device=device.id, turn_on=False, turn_off=True),
-            panel("portal", "portal.example", turn_on=False, turn_off=True),
+            panel("matrix-a", "ignored.example", device=device.id, turn_on=False, turn_off=True),
+            panel("matrix-b", "panel-b.example", turn_on=False, turn_off=True),
         ],
     )
     hass.states.async_set(PRIMARY, "playing", {"entity_picture": "/cover"})
@@ -189,7 +189,7 @@ async def test_stopping_clears_every_panel_and_turns_off_the_device_light(hass, 
     await hass.async_block_till_done()
 
     hosts = [data["wled_host"] for domain, service, data in calls if service == "stop_ddp_stream"]
-    assert hosts[-2:] == ["panel-a.example", "portal.example"]
+    assert hosts[-2:] == ["panel-a.example", "panel-b.example"]
     offs = [data["entity_id"] for domain, service, data in calls if service == "turn_off"]
     assert offs == [["light.panel_a_main"]]
 
@@ -199,7 +199,7 @@ def stops(calls):
 
 
 async def test_position_updates_do_not_restart_the_run(hass):
-    calls = await setup(hass, [panel("hub75", "panel-a.example", turn_on=False, turn_off=False)])
+    calls = await setup(hass, [panel("matrix-a", "panel-a.example", turn_on=False, turn_off=False)])
     hass.states.async_set(PRIMARY, "playing", {"entity_picture": "/cover", "media_position": 1})
     await pump(hass)
     sent_before = len(sends(calls))
@@ -214,7 +214,7 @@ async def test_position_updates_do_not_restart_the_run(hass):
 
 
 async def test_new_picture_is_sent_without_clearing(hass):
-    calls = await setup(hass, [panel("hub75", "panel-a.example", turn_on=False, turn_off=False)])
+    calls = await setup(hass, [panel("matrix-a", "panel-a.example", turn_on=False, turn_off=False)])
     hass.states.async_set(PRIMARY, "playing", {"entity_picture": "/one"})
     await pump(hass)
     assert stops(calls) == ["panel-a.example"]
@@ -232,7 +232,7 @@ async def test_new_picture_is_sent_without_clearing(hass):
 
 
 async def test_picture_is_sent_once_per_run_not_every_second(hass, freezer):
-    calls = await setup(hass, [panel("hub75", "panel-a.example", turn_on=False, turn_off=False)])
+    calls = await setup(hass, [panel("matrix-a", "panel-a.example", turn_on=False, turn_off=False)])
     hass.states.async_set(PRIMARY, "playing", {"entity_picture": "/one"})
     await pump(hass)
     freezer.tick(timedelta(seconds=10))
@@ -244,7 +244,7 @@ async def test_picture_is_sent_once_per_run_not_every_second(hass, freezer):
 async def test_send_timeout_and_image_ranges_are_applied(hass):
     calls = await setup(
         hass,
-        [panel("hub75", "panel-a.example", turn_on=False, turn_off=False, sharpen=1, gamma=2)],
+        [panel("matrix-a", "panel-a.example", turn_on=False, turn_off=False, sharpen=1, gamma=2)],
         extra={"send_timeout": 3},
     )
     hass.states.async_set(PRIMARY, "playing", {"entity_picture": "/one"})
@@ -256,7 +256,7 @@ async def test_send_timeout_and_image_ranges_are_applied(hass):
 
 
 async def test_keepalive_is_taken_from_the_panel(hass):
-    calls = await setup(hass, [panel("pixoo", "pixoo.example", keepalive=0, turn_on=False, turn_off=False)])
+    calls = await setup(hass, [panel("matrix-c", "panel-c.example", keepalive=0, turn_on=False, turn_off=False)])
     hass.states.async_set(PRIMARY, "playing", {"entity_picture": "/cover"})
     await pump(hass)
     assert sends(calls)[-1]["keepalive_seconds"] == 0
