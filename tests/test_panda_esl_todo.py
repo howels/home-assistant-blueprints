@@ -3,7 +3,7 @@ import pytest
 from homeassistant.core import SupportsResponse
 from homeassistant.util import dt as dt_util
 
-from panda_helpers import add_automation, in_canvas, icons, install, pump, register_write, run, texts, visible
+from panda_helpers import add_automation, in_canvas, icons, images, install, pump, register_write, run, texts, visible
 
 TODO = "todo.shopping"
 
@@ -89,7 +89,8 @@ async def test_emoji(hass):
     calls, _ = await setup(hass, inputs={"icon_style": "emoji"})
     _, data = await run(hass, calls)
     assert icons(data) == []
-    assert "\u2705" in texts(data)
+    assert images(data) == ["2705"]
+    in_canvas(data, 360, 240)
 
 
 async def test_state_change_waits_then_writes(hass):
@@ -106,7 +107,7 @@ async def test_skipped_when_unavailable(hass):
     assert calls == []
 
 
-async def test_emoji_is_stripped_and_text_trimmed(hass):
+async def test_emoji_is_drawn_as_images_and_text_trimmed(hass):
     install(hass, "panda_esl_todo.yaml")
     calls = register_write(hass)
 
@@ -123,9 +124,11 @@ async def test_emoji_is_stripped_and_text_trimmed(hass):
     t = texts(data)
     assert "Black bin day" in t and "Brown bin day" in t
     assert t.count("Tomorrow") == 2
+    assert images(data) == ["26AB", "1F6AE", "1F7E4", "1F6AE"]
+    in_canvas(data, 360, 240)
 
 
-async def test_emoji_kept_when_strip_is_off(hass):
+async def test_emoji_is_stripped_in_strip_mode(hass):
     install(hass, "panda_esl_todo.yaml")
     calls = register_write(hass)
 
@@ -134,6 +137,37 @@ async def test_emoji_kept_when_strip_is_off(hass):
 
     hass.services.async_register("todo", "get_items", get_items, supports_response=SupportsResponse.ONLY)
     hass.states.async_set(TODO, "1", {"friendly_name": "My tasks"})
-    await add_automation(hass, "panda_esl_todo.yaml", {"todo_entity": TODO, "strip_emoji": False})
+    await add_automation(hass, "panda_esl_todo.yaml", {"todo_entity": TODO, "emoji_mode": "strip"})
     _, data = await run(hass, calls)
-    assert "Bin \U0001F6AE day" in texts(data)
+    assert "Bin day" in texts(data)
+    assert images(data) == []
+
+
+async def test_unsupported_emoji_is_dropped(hass):
+    install(hass, "panda_esl_todo.yaml")
+    calls = register_write(hass)
+
+    async def get_items(call):
+        # Regional indicators (a flag) and a skin-tone modifier have no single OpenMoji file.
+        return {TODO: {"items": [{"summary": "Flag \U0001F1EC\U0001F1E7 \U0001F3FD day", "uid": "1", "status": "needs_action"}]}}
+
+    hass.services.async_register("todo", "get_items", get_items, supports_response=SupportsResponse.ONLY)
+    hass.states.async_set(TODO, "1", {"friendly_name": "My tasks"})
+    await add_automation(hass, "panda_esl_todo.yaml", {"todo_entity": TODO})
+    _, data = await run(hass, calls)
+    assert "Flag day" in texts(data)
+    assert images(data) == []
+
+
+async def test_custom_emoji_url(hass):
+    install(hass, "panda_esl_todo.yaml")
+    calls = register_write(hass)
+
+    async def get_items(call):
+        return {TODO: {"items": [{"summary": "Bin \U0001F6AE day", "uid": "1", "status": "needs_action"}]}}
+
+    hass.services.async_register("todo", "get_items", get_items, supports_response=SupportsResponse.ONLY)
+    hass.states.async_set(TODO, "1", {"friendly_name": "My tasks"})
+    await add_automation(hass, "panda_esl_todo.yaml", {"todo_entity": TODO, "emoji_image_url": "/config/emoji/{code}.png"})
+    _, data = await run(hass, calls)
+    assert [e["url"] for e in visible(data) if e["type"] == "dlimg"] == ["/config/emoji/1F6AE.png"]

@@ -3,7 +3,7 @@ from datetime import timedelta
 
 import pytest
 
-from panda_helpers import add_automation, icons, in_canvas, install, pump, register_write, run, texts, visible
+from panda_helpers import add_automation, icons, images, in_canvas, install, pump, register_write, run, texts, visible
 
 
 @pytest.fixture(autouse=True)
@@ -95,7 +95,7 @@ async def test_emoji(hass):
     calls = await setup(hass, {"icon_style": "emoji"})
     _, data = await run(hass, calls)
     assert icons(data) == []
-    assert texts(data).count("\u26A0") == 4
+    assert images(data).count("26A0") == 4  # header glyph and three markers
 
 
 async def test_state_change_writes(hass):
@@ -105,7 +105,18 @@ async def test_state_change_writes(hass):
     assert len(calls) == 1
 
 
-async def test_emoji_in_names_is_stripped(hass):
+async def test_emoji_in_names_is_drawn_as_image(hass):
     calls = await setup(hass, states={"binary_sensor.front_door": ("on", "Front \U0001F6AA door"), **{e: ("off", e) for e in WATCH[1:]}})
     _, data = await run(hass, calls)
     assert "Front door" in texts(data)
+    assert images(data) == ["1F6AA"]
+    url = [e["url"] for e in visible(data) if e["type"] == "dlimg"][0]
+    assert url == "https://cdn.jsdelivr.net/gh/hfg-gmuend/openmoji@15.1.0/color/72x72/1F6AA.png"
+    in_canvas(data, 360, 240)
+
+
+async def test_emoji_in_names_is_stripped_in_strip_mode(hass):
+    calls = await setup(hass, {"emoji_mode": "strip"}, states={"binary_sensor.front_door": ("on", "Front \U0001F6AA door"), **{e: ("off", e) for e in WATCH[1:]}})
+    _, data = await run(hass, calls)
+    assert "Front door" in texts(data)
+    assert images(data) == []

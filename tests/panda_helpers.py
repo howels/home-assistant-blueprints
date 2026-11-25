@@ -68,8 +68,17 @@ def icons(data):
     return [e["value"] for e in visible(data) if e["type"] == "icon"]
 
 
+def images(data):
+    """Codes (file stem) of the visible dlimg elements, in payload order."""
+    return [e["url"].rsplit("/", 1)[-1].removesuffix(".png") for e in visible(data) if e["type"] == "dlimg"]
+
+
 def in_canvas(data, w, h):
     for e in visible(data):
+        if e["type"] == "dlimg":
+            for a, b in (("x", "xsize"), ("y", "ysize")):
+                assert isinstance(e[a], int) and isinstance(e[b], int), e
+                assert 0 <= e[a] and e[a] + e[b] <= (w if a == "x" else h), e
         for key in ("x", "x_start", "x_end"):
             if key in e:
                 assert isinstance(e[key], int) and 0 <= e[key] < w, (key, e)

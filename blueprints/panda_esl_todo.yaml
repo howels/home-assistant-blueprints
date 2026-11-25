@@ -26,11 +26,18 @@ blueprint:
     from the resolution. Text is truncated with an ellipsis to fit its row.
 
 
-    Icon style emoji draws the header glyph from the emoji font. The integration
-    bundles no emoji font. Copy a monochrome emoji font, such as
-    NotoEmoji-Regular.ttf from the Noto Emoji project, to
-    config/panda_esl/fonts/ on the Home Assistant host. Emoji in the item
-    summaries are drawn by the text font, which has no emoji glyphs.
+    Icon style emoji draws OpenMoji pictures for the header glyph and the
+    markers. Emoji in the text are drawn the same way, up to three before each
+    row. Each picture is a PNG that the integration downloads from the emoji
+    image URL at every write, through the dlimg element. The renderer reduces
+    the label to black, white, and red, so the red parts of a colour emoji stay
+    red, the outlines turn black, and light fills turn white. Yellow is not
+    available on this hardware and is drawn as red. Replace color with black in
+    the URL for an all-black set. Copy the OpenMoji PNG folder to the Home
+    Assistant host, or serve it from config/www, to avoid the download. Put
+    {code} in the URL where the upper-case hexadecimal code point belongs.
+    OpenMoji is licensed CC BY-SA 4.0. The text font has no emoji glyphs, so
+    the text is drawn with its emoji removed.
   input:
     display_section:
       name: Display
@@ -96,14 +103,6 @@ blueprint:
             entity:
               filter:
                 - domain: todo
-        strip_emoji:
-          name: Strip emoji
-          description: >-
-            Removes emoji and pictographs from item summaries. The text font has no
-            emoji glyphs, so each emoji would draw as an empty box.
-          default: true
-          selector:
-            boolean: {}
         title:
           name: Title
           description: Header text. Leave empty to use the name of the entity.
@@ -158,7 +157,7 @@ blueprint:
           name: Icon style
           description: >-
             mdi draws a bundled Material Design Icon in the header. emoji draws
-            a glyph from the emoji font.
+            an OpenMoji picture.
           default: mdi
           selector:
             select:
@@ -168,12 +167,30 @@ blueprint:
                   value: mdi
                 - label: Emoji
                   value: emoji
-        emoji_font:
-          name: Emoji font
-          description: Font file used when the icon style is emoji.
-          default: NotoEmoji-Regular.ttf
+        emoji_image_url:
+          name: Emoji image URL
+          description: >-
+            Address of one emoji PNG. {code} is replaced with the upper-case
+            hexadecimal code point, for example 2600 for the sun. A file path
+            works in the same form.
+          default: https://cdn.jsdelivr.net/gh/hfg-gmuend/openmoji@15.1.0/color/72x72/{code}.png
           selector:
             text: {}
+        emoji_mode:
+          name: Emoji in text
+          description: >-
+            image draws up to three emoji from each row as pictures before the
+            text. strip draws the text only. The emoji image URL must be
+            reachable in image mode, or the write fails.
+          default: image
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: Pictures
+                  value: image
+                - label: Strip
+                  value: strip
         text_font:
           name: Text font
           description: Regular weight font for the items.
@@ -188,15 +205,16 @@ blueprint:
             text: {}
 
 variables:
-  strip_emoji: !input strip_emoji
-  emoji_pattern: "[\u2600-\u27BF\u2B00-\u2BFF\U0001F000-\U0001FAFF\uFE0F\u200D\u20E3]"
+  emoji_mode: !input emoji_mode
+  emoji_image_url: !input emoji_image_url
+  supported_emoji: "[\u231A-\u231B\u23E9-\u23F3\u23F8-\u23FA\u2600-\u2605\u260E\u2611\u2614-\u2615\u2618\u261D\u2620\u2622-\u2623\u2626\u262A\u262E-\u262F\u2638-\u263A\u2640\u2642\u2648-\u2653\u265F-\u2660\u2663\u2665-\u2666\u2668\u267B\u267E-\u267F\u2692-\u2697\u2699\u269B-\u269C\u26A0-\u26A1\u26A7\u26AA-\u26AB\u26B0-\u26B1\u26BD-\u26BE\u26C4-\u26C5\u26C8\u26CE-\u26CF\u26D1\u26D3-\u26D4\u26E9-\u26EA\u26F0-\u26F5\u26F7-\u26FA\u26FD\u2702\u2705\u2708-\u270D\u270F\u2712\u2714\u2716\u271D\u2721\u2728\u2733-\u2734\u2744\u2747\u274C\u274E\u2753-\u2755\u2757\u2763-\u2764\u2795-\u2797\u27A1\u27B0\u27BF\u2B05-\u2B07\u2B1B-\u2B1C\u2B50\u2B55\U0001F004\U0001F0CF\U0001F10D-\U0001F10F\U0001F12F\U0001F16D-\U0001F171\U0001F17E-\U0001F17F\U0001F18E\U0001F191-\U0001F19A\U0001F201-\U0001F202\U0001F21A\U0001F22F\U0001F232-\U0001F23A\U0001F250-\U0001F251\U0001F260-\U0001F265\U0001F300-\U0001F321\U0001F324-\U0001F393\U0001F396-\U0001F397\U0001F399-\U0001F39B\U0001F39E-\U0001F3F0\U0001F3F3-\U0001F3F5\U0001F3F7-\U0001F3FA\U0001F400-\U0001F4FD\U0001F4FF-\U0001F53D\U0001F549-\U0001F54E\U0001F550-\U0001F567\U0001F56F-\U0001F570\U0001F573-\U0001F57A\U0001F587\U0001F58A-\U0001F58D\U0001F590\U0001F595-\U0001F596\U0001F5A4-\U0001F5A5\U0001F5A8\U0001F5B1-\U0001F5B2\U0001F5BC\U0001F5C2-\U0001F5C4\U0001F5D1-\U0001F5D3\U0001F5DC-\U0001F5DE\U0001F5E1\U0001F5E3\U0001F5E8\U0001F5EF\U0001F5F3\U0001F5FA-\U0001F64F\U0001F680-\U0001F6C5\U0001F6CB-\U0001F6D2\U0001F6D5-\U0001F6D7\U0001F6DC-\U0001F6E5\U0001F6E9\U0001F6EB-\U0001F6EC\U0001F6F0\U0001F6F3-\U0001F6FC\U0001F7E0-\U0001F7EB\U0001F7F0\U0001F90C-\U0001F93A\U0001F93C-\U0001F945\U0001F947-\U0001F9FF\U0001FA70-\U0001FA7C\U0001FA80-\U0001FA88\U0001FA90-\U0001FABD\U0001FABF-\U0001FAC5\U0001FACE-\U0001FADB\U0001FAE0-\U0001FAE8\U0001FAF0-\U0001FAF8]"
+  strip_pattern: "[\u2600-\u27BF\u2B00-\u2BFF\U0001F000-\U0001FAFF\uFE0F\u200D\u20E3]"
   todo_entity: !input todo_entity
   title_input: !input title
   display_size: !input display_size
   max_items: !input max_items
   icon_style: !input icon_style
   use_emoji: "{{ icon_style == 'emoji' }}"
-  emoji_font: !input emoji_font
   text_font: !input text_font
   bold_font: !input bold_font
 
@@ -245,6 +263,7 @@ actions:
       row_h: "{{ (H * 0.12) | round(0) | int }}"
       size: "{{ (row_h * 0.66) | round(0) | int }}"
       box: "{{ (row_h * 0.50) | round(0) | int }}"
+      emoji_size: "{{ (row_h * 0.8) | round(0) | int }}"
       body_top: "{{ header_h + 3 }}"
       fit: "{{ ((H - body_top) / row_h) | int }}"
       rows: "{{ [fit, max_items | int] | min }}"
@@ -258,10 +277,13 @@ actions:
           'fill': 'black', 'outline': 'black'
         }] %}
         {% if use_emoji %}
+          {% set gy = ((header_h - glyph_size) / 2) | round(0) | int %}
           {% set ns.p = ns.p + [{
-            'type': 'text', 'value': '✅', 'x': pad + (glyph_size / 2) | round(0) | int,
-            'y': (header_h / 2) | round(0) | int, 'size': glyph_size, 'color': 'white',
-            'anchor': 'mm', 'font': emoji_font
+            'type': 'rectangle', 'x_start': pad, 'y_start': gy, 'x_end': pad + glyph_size,
+            'y_end': gy + glyph_size, 'fill': 'white', 'outline': 'white'
+          }, {
+            'type': 'dlimg', 'url': emoji_image_url.replace('{code}', '2705'), 'x': pad, 'y': gy,
+            'xsize': glyph_size, 'ysize': glyph_size
           }] %}
         {% else %}
           {% set ns.p = ns.p + [{
@@ -281,10 +303,11 @@ actions:
         }] %}
         {% if open_items | count == 0 %}
           {% if use_emoji %}
+            {% set es = (H * 0.30) | round(0) | int %}
             {% set ns.p = ns.p + [{
-              'type': 'text', 'value': '✅', 'x': (W / 2) | round(0) | int,
-              'y': (header_h + (H - header_h) * 0.40) | round(0) | int,
-              'size': (H * 0.30) | round(0) | int, 'color': 'black', 'anchor': 'mm', 'font': emoji_font
+              'type': 'dlimg', 'url': emoji_image_url.replace('{code}', '2705'), 'x': ((W - es) / 2) | round(0) | int,
+              'y': (header_h + (H - header_h) * 0.40 - es / 2) | round(0) | int,
+              'xsize': es, 'ysize': es
             }] %}
           {% else %}
             {% set ns.p = ns.p + [{
@@ -312,11 +335,13 @@ actions:
           {% else %}
             {% set due_text = as_local(due).strftime('%a %d %b') if days < 0 or days > 6 else as_local(due).strftime('%a') %}
           {% endif %}
-          {% set text_x = pad + box + pad %}
+          {% set raw = it.get('summary') or '' %}
+          {% set summary = (raw | regex_replace(strip_pattern, '') | regex_replace('\\s{2,}', ' ')) | trim %}
+          {% set ems = (raw | regex_findall(supported_emoji))[:3] if emoji_mode == 'image' else [] %}
+          {% set base_x = pad + box + pad %}
+          {% set text_x = base_x + ems | count * (emoji_size + 3) %}
           {% set due_w = ((due_text | length) + 1) * char_w if due_text else 0 %}
           {% set max_chars = ((W - text_x - pad - due_w) / char_w) | int %}
-          {% set raw = it.get('summary') or '' %}
-          {% set summary = (raw | regex_replace(emoji_pattern, '') | regex_replace('\\s{2,}', ' ') if strip_emoji else raw) | trim %}
           {% set ns.p = ns.p + [{
             'type': 'rectangle', 'x_start': pad, 'y_start': y - (box / 2) | round(0) | int,
             'x_end': pad + box, 'y_end': y + (box / 2) | round(0) | int,
@@ -325,6 +350,13 @@ actions:
             'type': 'text', 'value': summary if summary | length <= max_chars else summary[:max_chars - 1] ~ '…',
             'x': text_x, 'y': y, 'size': size, 'color': 'black', 'anchor': 'lm', 'font': text_font
           }] %}
+          {% for ch in ems %}
+            {% set ns.p = ns.p + [{
+              'type': 'dlimg', 'url': emoji_image_url.replace('{code}', ch.encode('utf-32-be').hex() | upper | regex_replace('^0+', '')),
+              'x': base_x + loop.index0 * (emoji_size + 3),
+              'y': y - (emoji_size / 2) | round(0) | int, 'xsize': emoji_size, 'ysize': emoji_size
+            }] %}
+          {% endfor %}
           {% if due_text %}
             {% set ns.p = ns.p + [{
               'type': 'text', 'value': due_text, 'x': W - pad, 'y': y, 'size': size,

@@ -25,11 +25,15 @@ blueprint:
 
 
     Icon style mdi draws Material Design Icons, which the integration bundles.
-    Icon style emoji draws text glyphs with the font in the emoji font input.
-    The integration bundles no emoji font. Copy a monochrome emoji font, such
-    as NotoEmoji-Regular.ttf from the Noto Emoji project, to
-    config/panda_esl/fonts/ on the Home Assistant host. The renderer converts
-    the label to black, white, and red, so a colour emoji font does not help.
+    Icon style emoji draws OpenMoji pictures. Each picture is a PNG that the
+    integration downloads from the emoji image URL at every write, through the
+    dlimg element. The renderer reduces the label to black, white, and red, so
+    the red parts of a colour emoji stay red, the outlines turn black, and
+    light fills turn white. Yellow is not available on this hardware and is
+    drawn as red. Replace color with black in the URL for an all-black set.
+    Copy the OpenMoji PNG folder to a path on the Home Assistant host, or serve
+    it from config/www, to avoid the download. Put {code} in the URL where the
+    upper-case hexadecimal code point belongs. OpenMoji is licensed CC BY-SA 4.0.
 
 
     Write guarded skips the write when the rendered image matches the last
@@ -135,8 +139,8 @@ blueprint:
         icon_style:
           name: Icon style
           description: >-
-            mdi draws bundled Material Design Icons. emoji draws glyphs from
-            the emoji font.
+            mdi draws bundled Material Design Icons. emoji draws OpenMoji
+            pictures from the emoji image URL.
           default: mdi
           selector:
             select:
@@ -146,12 +150,13 @@ blueprint:
                   value: mdi
                 - label: Emoji
                   value: emoji
-        emoji_font:
-          name: Emoji font
+        emoji_image_url:
+          name: Emoji image URL
           description: >-
-            Font file used when the icon style is emoji. A bare name is
-            resolved in config/panda_esl/fonts/ and config/www/fonts/.
-          default: NotoEmoji-Regular.ttf
+            Address of one emoji PNG when the icon style is emoji. {code} is
+            replaced with the upper-case hexadecimal code point, for example
+            2600 for the sun. A file path works in the same form.
+          default: https://cdn.jsdelivr.net/gh/hfg-gmuend/openmoji@15.1.0/color/72x72/{code}.png
           selector:
             text: {}
         text_font:
@@ -176,7 +181,7 @@ variables:
   display_size: !input display_size
   icon_style: !input icon_style
   use_emoji: "{{ icon_style == 'emoji' }}"
-  emoji_font: !input emoji_font
+  emoji_image_url: !input emoji_image_url
   text_font: !input text_font
   bold_font: !input bold_font
   show_forecast: !input show_forecast
@@ -191,22 +196,22 @@ variables:
     clear-night: weather-night
     partlycloudy: weather-partly-cloudy
     exceptional: alert-circle-outline
-  emoji_icons:
-    clear-night: "\U0001F319"
-    cloudy: "\u2601"
-    exceptional: "\u26A0"
-    fog: "\U0001F32B"
-    hail: "\U0001F328"
-    lightning: "\u26A1"
-    lightning-rainy: "\u26C8"
-    partlycloudy: "\u26C5"
-    pouring: "\U0001F327"
-    rainy: "\U0001F327"
-    snowy: "\U0001F328"
-    snowy-rainy: "\U0001F328"
-    sunny: "\u2600"
-    windy: "\U0001F4A8"
-    windy-variant: "\U0001F4A8"
+  emoji_codes:
+    clear-night: "1F319"
+    cloudy: "2601"
+    exceptional: "26A0"
+    fog: "1F32B"
+    hail: "1F328"
+    lightning: "26A1"
+    lightning-rainy: "26C8"
+    partlycloudy: "26C5"
+    pouring: "1F327"
+    rainy: "1F327"
+    snowy: "1F328"
+    snowy-rainy: "1F328"
+    sunny: "2600"
+    windy: "1F4A8"
+    windy-variant: "1F4A8"
 
 triggers:
   - trigger: homeassistant
@@ -257,7 +262,7 @@ actions:
             {% set ns.items = ns.items + [{
               'label': as_local(d).strftime('%a'),
               'icon': mdi_icons.get(c, 'weather-' ~ c),
-              'emoji': emoji_icons.get(c, emoji_icons['cloudy']),
+              'code': emoji_codes.get(c, emoji_codes['cloudy']),
               'wet': c in wet_conditions,
               'temps': temps
             }] %}
@@ -270,7 +275,7 @@ actions:
       H: "{{ display_size.split('x')[1] | int }}"
       cond: "{{ states(weather_entity) }}"
       cond_icon: "{{ mdi_icons.get(cond, 'weather-' ~ cond) }}"
-      cond_emoji: "{{ emoji_icons.get(cond, emoji_icons['cloudy']) }}"
+      cond_code: "{{ emoji_codes.get(cond, emoji_codes['cloudy']) | string }}"
       cond_label: >-
         {{ cond | replace('partlycloudy', 'partly cloudy') | replace('-', ' ') | title }}
       cond_wet: "{{ cond in wet_conditions }}"
@@ -368,14 +373,12 @@ actions:
           color: "{{ 'red' if cond_wet else 'black' }}"
           anchor: mm
           visible: "{{ not use_emoji }}"
-        - type: text
-          value: "{{ cond_emoji }}"
-          x: "{{ icon_x }}"
-          "y": "{{ icon_y }}"
-          size: "{{ icon_size }}"
-          color: "{{ 'red' if cond_wet else 'black' }}"
-          anchor: mm
-          font: "{{ emoji_font }}"
+        - type: dlimg
+          url: "{{ emoji_image_url.replace('{code}', cond_code) }}"
+          x: "{{ icon_x - (icon_size / 2) | round(0) | int }}"
+          "y": "{{ icon_y - (icon_size / 2) | round(0) | int }}"
+          xsize: "{{ icon_size }}"
+          ysize: "{{ icon_size }}"
           visible: "{{ use_emoji }}"
         - type: text
           value: "{{ cond_label }}"
@@ -418,14 +421,12 @@ actions:
           color: "{{ 'red' if rain_amount > 0 else 'black' }}"
           anchor: mm
           visible: "{{ not use_emoji }}"
-        - type: text
-          value: "\u2614"
-          x: "{{ col1_x }}"
-          "y": "{{ stat_icon_y }}"
-          size: "{{ stat_icon_size }}"
-          color: "{{ 'red' if rain_amount > 0 else 'black' }}"
-          anchor: mm
-          font: "{{ emoji_font }}"
+        - type: dlimg
+          url: "{{ emoji_image_url.replace('{code}', '2614') }}"
+          x: "{{ col1_x - (stat_icon_size / 2) | round(0) | int }}"
+          "y": "{{ stat_icon_y - (stat_icon_size / 2) | round(0) | int }}"
+          xsize: "{{ stat_icon_size }}"
+          ysize: "{{ stat_icon_size }}"
           visible: "{{ use_emoji }}"
         - type: text
           value: "{{ rain_now }}"
@@ -443,14 +444,12 @@ actions:
           color: black
           anchor: mm
           visible: "{{ not use_emoji }}"
-        - type: text
-          value: "\U0001F4A7"
-          x: "{{ col2_x }}"
-          "y": "{{ stat_icon_y }}"
-          size: "{{ stat_icon_size }}"
-          color: black
-          anchor: mm
-          font: "{{ emoji_font }}"
+        - type: dlimg
+          url: "{{ emoji_image_url.replace('{code}', '1F4A7') }}"
+          x: "{{ col2_x - (stat_icon_size / 2) | round(0) | int }}"
+          "y": "{{ stat_icon_y - (stat_icon_size / 2) | round(0) | int }}"
+          xsize: "{{ stat_icon_size }}"
+          ysize: "{{ stat_icon_size }}"
           visible: "{{ use_emoji }}"
         - type: text
           value: "{{ humidity_now }}"
@@ -468,14 +467,12 @@ actions:
           color: black
           anchor: mm
           visible: "{{ not use_emoji }}"
-        - type: text
-          value: "\U0001F4A8"
-          x: "{{ col3_x }}"
-          "y": "{{ stat_icon_y }}"
-          size: "{{ stat_icon_size }}"
-          color: black
-          anchor: mm
-          font: "{{ emoji_font }}"
+        - type: dlimg
+          url: "{{ emoji_image_url.replace('{code}', '1F4A8') }}"
+          x: "{{ col3_x - (stat_icon_size / 2) | round(0) | int }}"
+          "y": "{{ stat_icon_y - (stat_icon_size / 2) | round(0) | int }}"
+          xsize: "{{ stat_icon_size }}"
+          ysize: "{{ stat_icon_size }}"
           visible: "{{ use_emoji }}"
         - type: text
           value: "{{ wind_now }}"
@@ -527,14 +524,12 @@ actions:
           color: "{{ 'red' if days | count > 0 and days[0].wet else 'black' }}"
           anchor: mm
           visible: "{{ strip and not use_emoji and days | count > 0 }}"
-        - type: text
-          value: "{{ days[0].emoji if days | count > 0 else '' }}"
-          x: "{{ day1_x }}"
-          "y": "{{ strip_icon_y }}"
-          size: "{{ strip_icon_size }}"
-          color: "{{ 'red' if days | count > 0 and days[0].wet else 'black' }}"
-          anchor: mm
-          font: "{{ emoji_font }}"
+        - type: dlimg
+          url: "{{ emoji_image_url.replace('{code}', days[0].code | string if days | count > 0 else '2601') }}"
+          x: "{{ day1_x - (strip_icon_size / 2) | round(0) | int }}"
+          "y": "{{ strip_icon_y - (strip_icon_size / 2) | round(0) | int }}"
+          xsize: "{{ strip_icon_size }}"
+          ysize: "{{ strip_icon_size }}"
           visible: "{{ strip and use_emoji and days | count > 0 }}"
         - type: text
           value: "{{ days[0].temps if days | count > 0 else '' }}"
@@ -562,14 +557,12 @@ actions:
           color: "{{ 'red' if days | count > 1 and days[1].wet else 'black' }}"
           anchor: mm
           visible: "{{ strip and not use_emoji and days | count > 1 }}"
-        - type: text
-          value: "{{ days[1].emoji if days | count > 1 else '' }}"
-          x: "{{ day2_x }}"
-          "y": "{{ strip_icon_y }}"
-          size: "{{ strip_icon_size }}"
-          color: "{{ 'red' if days | count > 1 and days[1].wet else 'black' }}"
-          anchor: mm
-          font: "{{ emoji_font }}"
+        - type: dlimg
+          url: "{{ emoji_image_url.replace('{code}', days[1].code | string if days | count > 1 else '2601') }}"
+          x: "{{ day2_x - (strip_icon_size / 2) | round(0) | int }}"
+          "y": "{{ strip_icon_y - (strip_icon_size / 2) | round(0) | int }}"
+          xsize: "{{ strip_icon_size }}"
+          ysize: "{{ strip_icon_size }}"
           visible: "{{ strip and use_emoji and days | count > 1 }}"
         - type: text
           value: "{{ days[1].temps if days | count > 1 else '' }}"
@@ -597,14 +590,12 @@ actions:
           color: "{{ 'red' if days | count > 2 and days[2].wet else 'black' }}"
           anchor: mm
           visible: "{{ strip and not use_emoji and days | count > 2 }}"
-        - type: text
-          value: "{{ days[2].emoji if days | count > 2 else '' }}"
-          x: "{{ day3_x }}"
-          "y": "{{ strip_icon_y }}"
-          size: "{{ strip_icon_size }}"
-          color: "{{ 'red' if days | count > 2 and days[2].wet else 'black' }}"
-          anchor: mm
-          font: "{{ emoji_font }}"
+        - type: dlimg
+          url: "{{ emoji_image_url.replace('{code}', days[2].code | string if days | count > 2 else '2601') }}"
+          x: "{{ day3_x - (strip_icon_size / 2) | round(0) | int }}"
+          "y": "{{ strip_icon_y - (strip_icon_size / 2) | round(0) | int }}"
+          xsize: "{{ strip_icon_size }}"
+          ysize: "{{ strip_icon_size }}"
           visible: "{{ strip and use_emoji and days | count > 2 }}"
         - type: text
           value: "{{ days[2].temps if days | count > 2 else '' }}"

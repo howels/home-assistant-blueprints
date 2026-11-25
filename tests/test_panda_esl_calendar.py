@@ -5,7 +5,7 @@ import pytest
 from homeassistant.core import SupportsResponse
 from homeassistant.util import dt as dt_util
 
-from panda_helpers import add_automation, icons, in_canvas, install, pump, register_write, run, texts, visible
+from panda_helpers import add_automation, icons, images, in_canvas, install, pump, register_write, run, texts, visible
 
 CAL = ["calendar.family", "calendar.work"]
 
@@ -110,7 +110,8 @@ async def test_emoji(hass):
     calls, _ = await setup(hass, {"icon_style": "emoji"})
     _, data = await run(hass, calls)
     assert icons(data) == []
-    assert "\U0001F4C5" in texts(data)
+    assert images(data) == ["1F4C5"]
+    in_canvas(data, 360, 240)
 
 
 async def test_calendar_state_change_writes(hass):
@@ -120,12 +121,28 @@ async def test_calendar_state_change_writes(hass):
     assert len(calls) == 1
 
 
-async def test_emoji_is_stripped(hass):
+async def _emoji_event(hass, inputs=None):
     now = dt_util.now()
     data_in = {CAL[0]: {"events": [
         {"start": (now + timedelta(hours=1)).isoformat(), "end": (now + timedelta(hours=2)).isoformat(),
          "summary": "Bob with auntie Donna \U0001F43E\U0001F496", "status": "confirmed"},
     ]}}
-    calls, _ = await setup(hass, data=data_in)
-    _, data = await run(hass, calls)
+    calls, _ = await setup(hass, inputs, data=data_in)
+    return await run(hass, calls)
+
+
+async def test_emoji_is_drawn_as_images_before_text(hass):
+    _, data = await _emoji_event(hass)
     assert "Bob with auntie Donna" in texts(data)
+    assert images(data) == ["1F43E", "1F496"]
+    pics = [e for e in visible(data) if e["type"] == "dlimg"]
+    text = [e for e in visible(data) if e["type"] == "text" and e["value"] == "Bob with auntie Donna"][0]
+    assert pics[0]["x"] + pics[0]["xsize"] <= pics[1]["x"]
+    assert pics[1]["x"] + pics[1]["xsize"] <= text["x"]
+    in_canvas(data, 360, 240)
+
+
+async def test_emoji_is_stripped_in_strip_mode(hass):
+    _, data = await _emoji_event(hass, {"emoji_mode": "strip"})
+    assert "Bob with auntie Donna" in texts(data)
+    assert images(data) == []

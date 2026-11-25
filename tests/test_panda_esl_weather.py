@@ -112,6 +112,10 @@ async def run(hass, calls):
     return service, data
 
 
+def images(data):
+    return [e["url"].rsplit("/", 1)[-1].removesuffix(".png") for e in visible(data) if e["type"] == "dlimg"]
+
+
 def visible(data):
     return [e for e in data["payload"] if e.get("visible", True) is not False]
 
@@ -181,15 +185,17 @@ async def test_sizes(hass, size, w, h):
 
 
 async def test_emoji_style(hass):
-    calls, _ = await setup(hass, {"icon_style": "emoji", "emoji_font": "NotoEmoji-Regular.ttf"})
+    calls, _ = await setup(hass, {"icon_style": "emoji"})
     _, data = await run(hass, calls)
     assert icons(data) == []
-    t = texts(data)
-    assert "\u26C5" in t  # partly cloudy
-    assert "\U0001F327" in t  # tomorrow, rainy
-    assert "\u2614" in t and "\U0001F4A7" in t and "\U0001F4A8" in t
-    emoji = [e for e in visible(data) if e.get("font") == "NotoEmoji-Regular.ttf"]
-    assert len(emoji) == 7
+    codes = images(data)
+    assert len(codes) == 7
+    assert codes[0] == "26C5"  # partly cloudy
+    assert "1F327" in codes  # tomorrow, rainy
+    assert {"2614", "1F4A7", "1F4A8"} <= set(codes)
+    for e in visible(data):
+        if e["type"] == "dlimg":
+            assert 0 <= e["x"] and e["x"] + e["xsize"] <= 360 and 0 <= e["y"] and e["y"] + e["ysize"] <= 240, e
 
 
 async def test_no_forecast_support(hass):
