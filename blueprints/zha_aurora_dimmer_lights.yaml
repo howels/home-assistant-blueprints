@@ -1,0 +1,256 @@
+blueprint:
+  name: ZHA - Smart Knob for lights
+  author: howels
+  source_url: https://github.com/howels/home-assistant-blueprints/blob/main/blueprints/zha_aurora_dimmer_lights.yaml
+  description: >-
+    Control lights with a Moes Smart Knob.
+
+
+    Rotating left or right changes the brightness of the selected lights using
+    step_size. Press-rotating changes the colour temperature, or the hue in a
+    colour mode. A long press switches between colour temperature and colour
+    modes. Endpoint 1 controls the first light selection and endpoint 2 the
+    second.
+
+
+    Each rotation event changes the brightness by step_size times the
+    brightness sensitivity, in percent. The result is limited to the range from
+    the smallest to the largest brightness step. The largest step cannot exceed
+    10 percent, so the full range always takes at least 10 steps, and the
+    smallest step keeps slow turns visible. Colour temperature and hue steps
+    follow the colour sensitivity and are limited to a tenth of the colour
+    range.
+
+
+    A triple click switches to the second mode, where a double click is also
+    available. In the second mode the actions only write log messages. Adapt
+    them as necessary.
+
+
+    Each event runs in parallel, so a burst of rotation events does not queue
+    behind the previous light command. A brightness step is relative to the
+    light's current state when the command is issued. Events that arrive before
+    the light has reported its new state step from the old value, so the dimming
+    rate is limited by the light's response time and no backlog builds up.
+    Overlapping runs are capped at 20. Further events are dropped silently.
+  domain: automation
+  input:
+    remote:
+      name: Remote
+      description: Moes Knob to use
+      selector:
+        device:
+          integration: zha
+          model: 2GBatteryDimmer50AU
+          multiple: false
+    light1:
+      name: Lights for endpoint 1
+      description: The light(s) controlled by endpoint 1
+      selector:
+        target:
+          entity:
+            - domain:
+                - light
+    light2:
+      name: Lights for endpoint 2
+      description: The light(s) controlled by endpoint 2. Leave empty if unused.
+      default: {}
+      selector:
+        target:
+          entity:
+            - domain:
+                - light
+    brightness_sensitivity:
+      name: Brightness sensitivity
+      description: >-
+        Percentage of brightness added or removed for each unit of the knob's
+        step_size. Higher values dim faster. 0.25 is the original behaviour.
+      default: 0.25
+      selector:
+        number:
+          min: 0.05
+          max: 1.0
+          step: 0.05
+          mode: slider
+    min_step:
+      name: Smallest brightness step
+      description: >-
+        The least brightness change, in percent, that one rotation event makes.
+        It keeps slow turns from producing no visible change. A light cannot
+        change by less than about 0.4 percent.
+      default: 1
+      selector:
+        number:
+          min: 0.5
+          max: 5.0
+          step: 0.5
+          mode: slider
+          unit_of_measurement: "%"
+    max_step:
+      name: Largest brightness step
+      description: >-
+        The most brightness change, in percent, that one rotation event makes.
+        A fast turn is capped here. The range stops at 10, so the full
+        brightness range always takes at least 10 steps.
+      default: 10
+      selector:
+        number:
+          min: 2
+          max: 10
+          step: 1
+          mode: slider
+          unit_of_measurement: "%"
+    colour_sensitivity:
+      name: Colour sensitivity
+      description: >-
+        Multiplier for colour temperature and hue steps. 1 is the original
+        behaviour. Each event moves the colour temperature by at most a tenth
+        of the light's range and the hue by at most 36 degrees, so the colour
+        range always takes at least 10 steps.
+      default: 1
+      selector:
+        number:
+          min: 0.25
+          max: 4.0
+          step: 0.25
+          mode: slider
+mode: parallel
+max: 20
+max_exceeded: silent
+triggers:
+  - trigger: event
+    event_type: zha_event
+    event_data:
+      device_id: !input remote
+variables:
+  entity1: !input light1
+  entity2: !input light2
+  brightness_gain: !input brightness_sensitivity
+  min_step_pct: !input min_step
+  max_step_pct: !input max_step
+  colour_gain: !input colour_sensitivity
+  command: "{{ trigger.event.data.command }}"
+  endpoint: "{{ trigger.event.data.endpoint_id }}"
+  params: "{{ trigger.event.data.params | default({}) }}"
+  step_mode: "{{ params.get('step_mode', '') | string }}"
+  rotate_type: "{{ params.get('rotate_type', '') }}"
+  press_type: "{{ params.get('press_type', '') }}"
+  step_dir: "{{ 1 if step_mode == 'StepMode.Up' or rotate_type == 1 else -1 }}"
+  step_size: "{{ params.get('step_size', 0) | float(0) }}"
+  step_pct: "{{ [[step_size * brightness_gain, min_step_pct] | max, max_step_pct] | min * step_dir }}"
+  args_value: "{{ trigger.event.data.args.value | default('') }}"
+  light_target: "{{ entity1 if endpoint == 1 else entity2 if endpoint == 2 else {} }}"
+  has_target: "{{ light_target | length > 0 }}"
+  lead: >-
+    {% set e = light_target.get('entity_id', []) %}
+    {{ e if e is string else (e | first | default('')) }}
+  color_mode: "{{ state_attr(lead, 'color_mode') if lead else none }}"
+  is_colour: "{{ color_mode in ['hs', 'rgb', 'rgbw', 'rgbww', 'xy'] }}"
+  is_temp: "{{ color_mode == 'color_temp' }}"
+actions:
+  - choose:
+      - conditions: "{{ command in ['on', 'off'] and has_target }}"
+        sequence:
+          - action: light.toggle
+            target: "{{ light_target }}"
+            data:
+              transition: 0.25
+      - conditions: "{{ command == 'step' and has_target }}"
+        sequence:
+          - action: light.turn_on
+            target: "{{ light_target }}"
+            data:
+              brightness_step_pct: "{{ step_pct }}"
+              transition: 0.1
+      - conditions: "{{ command == 'step_color_temp' and has_target and is_temp }}"
+        sequence:
+          - variables:
+              kelvin: "{{ state_attr(lead, 'color_temp_kelvin') | int(4000) }}"
+              min_kelvin: "{{ state_attr(lead, 'min_color_temp_kelvin') | int(2000) }}"
+              max_kelvin: "{{ state_attr(lead, 'max_color_temp_kelvin') | int(6500) }}"
+              mired_span: "{{ 1000000 / min_kelvin - 1000000 / max_kelvin }}"
+              mired_step: "{{ [[step_size * colour_gain, 1] | max, mired_span / 10] | min }}"
+              mired: "{{ [1000000 / kelvin - mired_step * step_dir, 1] | max }}"
+              new_kelvin: "{{ [min_kelvin, [max_kelvin, (1000000 / mired) | int] | min] | max }}"
+          - action: light.turn_on
+            target: "{{ light_target }}"
+            data:
+              color_temp_kelvin: "{{ new_kelvin }}"
+              transition: 0.25
+      - conditions: "{{ command == 'step_color_temp' and has_target and is_colour }}"
+        sequence:
+          - variables:
+              hue_step: "{{ [[step_size / 2 * colour_gain, 1] | max, 36] | min }}"
+          - action: light.turn_on
+            target: "{{ light_target }}"
+            data:
+              hs_color:
+                - "{{ ((state_attr(lead, 'hs_color') or [0, 0])[0] | float(0) + hue_step * step_dir) % 360 }}"
+                - 100
+              transition: 0.25
+      - conditions: "{{ command == 'move_saturation' and has_target and is_colour }}"
+        sequence:
+          - action: light.turn_on
+            target: "{{ light_target }}"
+            data:
+              color_temp_kelvin: 3333
+              transition: 0.25
+      - conditions: "{{ command == 'move_saturation' and has_target and is_temp }}"
+        sequence:
+          - action: light.turn_on
+            target: "{{ light_target }}"
+            data:
+              hs_color:
+                - 0
+                - 100
+              transition: 0.25
+      - conditions: "{{ command == 'attribute_updated' and args_value == 0 }}"
+        sequence:
+          - action: system_log.write
+            data:
+              message: entered mode 0
+      - conditions: "{{ command == 'attribute_updated' and args_value == 1 }}"
+        sequence:
+          - action: system_log.write
+            data:
+              message: entered mode 1
+      - conditions: "{{ command == 'rotate_type' }}"
+        sequence:
+          - action: system_log.write
+            data:
+              message: "mode 1 rotate {{ step_dir }}"
+      - conditions: "{{ command == 'press_type' and press_type == 0 }}"
+        sequence:
+          - action: system_log.write
+            data:
+              message: "mode 1 click"
+      - conditions: "{{ command == 'press_type' and press_type == 1 }}"
+        sequence:
+          - action: system_log.write
+            data:
+              message: "mode 1 dblclick"
+      - conditions: "{{ command == 'press_type' and press_type == 2 }}"
+        sequence:
+          - action: system_log.write
+            data:
+              message: "mode 1 long click"
+      - conditions: "{{ command == 'move_hue' }}"
+        sequence:
+          - repeat:
+              sequence:
+                - action: system_log.write
+                  data:
+                    message: mode 0 pressed
+                - wait_for_trigger:
+                    - trigger: event
+                      event_type: zha_event
+                      event_data:
+                        device_id: !input remote
+                  timeout:
+                    milliseconds: 500
+              until: "{{ wait.trigger is not none or repeat.index >= 10 }}"
+      - conditions: "{{ command == 'stop_move_step' }}"
+        sequence:
+          - action: system_log.write
+            data:
+              message: mode 0 released
