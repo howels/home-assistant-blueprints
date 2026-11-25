@@ -198,6 +198,19 @@ async def test_emoji_style(hass):
             assert 0 <= e["x"] and e["x"] + e["xsize"] <= 360 and 0 <= e["y"] and e["y"] + e["ysize"] <= 240, e
 
 
+@pytest.mark.parametrize("state,code", [
+    ("cloudy", "2601"),  # all digits: native rendering turns the variable into an int
+    ("sunny", "2600"),
+    ("clear-night", "1F319"),
+    ("lightning", "26A1"),
+    ("unknown-condition", "2601"),
+])
+async def test_emoji_codes_made_of_digits(hass, state, code):
+    calls, _ = await setup(hass, {"icon_style": "emoji"}, state=state)
+    _, data = await run(hass, calls)
+    assert images(data)[0] == code
+
+
 async def test_no_forecast_support(hass):
     calls, _ = await setup(hass, forecast=False)
     _, data = await run(hass, calls)

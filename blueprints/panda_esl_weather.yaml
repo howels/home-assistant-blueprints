@@ -275,7 +275,7 @@ actions:
       H: "{{ display_size.split('x')[1] | int }}"
       cond: "{{ states(weather_entity) }}"
       cond_icon: "{{ mdi_icons.get(cond, 'weather-' ~ cond) }}"
-      cond_code: "{{ emoji_codes.get(cond, emoji_codes['cloudy']) | string }}"
+      cond_code: "{{ emoji_codes.get(cond, emoji_codes['cloudy']) }}"
       cond_label: >-
         {{ cond | replace('partlycloudy', 'partly cloudy') | replace('-', ' ') | title }}
       cond_wet: "{{ cond in wet_conditions }}"
@@ -374,7 +374,7 @@ actions:
           anchor: mm
           visible: "{{ not use_emoji }}"
         - type: dlimg
-          url: "{{ emoji_image_url.replace('{code}', cond_code) }}"
+          url: "{{ emoji_image_url.replace('{code}', cond_code | string) }}"
           x: "{{ icon_x - (icon_size / 2) | round(0) | int }}"
           "y": "{{ icon_y - (icon_size / 2) | round(0) | int }}"
           xsize: "{{ icon_size }}"
