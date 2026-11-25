@@ -7,6 +7,7 @@ Home Assistant blueprints by howels.
 | `blueprints/room_occupancy.yaml` | Restores a room's lighting on entry and saves it, then turns the lights off, when the room is clear. |
 | `blueprints/zha_aurora_dimmer_lights.yaml` | Controls up to two light groups from a ZHA Aurora dimmer or smart knob. Handles step events and absolute level events, with adjustable sensitivity. |
 | `blueprints/wled-matrix-album-art.yaml` | Shows a media player's album art on a WLED matrix and clears the matrix when playback stops. |
+| `blueprints/panda_esl_weather.yaml` | Draws current weather and a three day forecast on a PANDA / ETAG Bluetooth e-paper label through the PANDA ESL integration. Icon style is Material Design Icons or emoji. |
 | `examples/occupancy_scene_store.yaml` | Template sensor that keeps the saved snapshots across restarts. |
 | `tests/` | pytest suite that runs the blueprint in a real Home Assistant core. |
 

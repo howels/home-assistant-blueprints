@@ -175,3 +175,47 @@ async def test_level_events_sent_in_arrival_order(hass):
         lev(hass, lv)
     await pump(hass)
     assert [c[1]["brightness"] for c in calls] == [50, 60, 70, 80]
+
+
+# Regression: ZHA sends enum objects in params. Rendering the whole params dict
+# into a variable turned them into integers, so every step was read as a step down.
+
+import enum
+
+
+class StepMode(enum.IntEnum):
+    Up = 0
+    Down = 1
+
+    def __str__(self):
+        return f"StepMode.{self.name}"
+
+
+class PlainStepMode(enum.IntEnum):
+    Up = 0
+    Down = 1
+
+
+def zha_step(hass, mode, size, command="step"):
+    hass.bus.async_fire("zha_event", {
+        "device_id": "dev1", "endpoint_id": 1, "cluster_id": 8, "command": command,
+        "args": [mode, size, 0, 0, 0], "params": {"step_mode": mode, "step_size": size, "transition_time": 0},
+    })
+
+
+async def test_enum_step_mode_direction(hass):
+    calls = await setup(hass)
+    zha_step(hass, StepMode.Up, 33); zha_step(hass, StepMode.Down, 5); await pump(hass)
+    assert [c[1]["brightness_step_pct"] for c in calls] == [8.25, -1.25]
+
+
+async def test_plain_integer_enum_step_mode_direction(hass):
+    calls = await setup(hass)
+    zha_step(hass, PlainStepMode.Up, 33); zha_step(hass, PlainStepMode.Down, 5); await pump(hass)
+    assert [c[1]["brightness_step_pct"] for c in calls] == [8.25, -1.25]
+
+
+async def test_enum_step_mode_colour_temperature_direction(hass):
+    calls = await setup(hass)
+    zha_step(hass, StepMode.Up, 10, "step_color_temp"); zha_step(hass, StepMode.Down, 10, "step_color_temp"); await pump(hass)
+    assert [c[1]["color_temp_kelvin"] for c in calls] == [int(1000000 / 240), int(1000000 / 260)]

@@ -1,0 +1,614 @@
+blueprint:
+  name: PANDA ESL weather display
+  author: howels
+  domain: automation
+  source_url: https://github.com/howels/home-assistant-blueprints/blob/main/blueprints/panda_esl_weather.yaml
+  description: >-
+    Draws the current weather and a three day forecast on a PANDA / ETAG
+    Bluetooth e-paper label. Requires the PANDA ESL integration
+    (https://github.com/moryoav/ha-panda).
+
+
+    The automation runs at Home Assistant start, when the weather entity
+    changes state, and on the selected interval. Each run calls
+    weather.get_forecasts with type daily, then calls panda_esl.write_guarded
+    or panda_esl.write with one payload. The run is skipped while the weather
+    entity is unavailable or unknown. If the entity does not support daily
+    forecasts, the display shows the current conditions only.
+
+
+    The layout is calculated from the display resolution. The label advertises
+    its size in the tag ID: ETAG-525 is 256 by 128, ETAG-526 is 296 by 152,
+    ETAG-530 is 360 by 240, and ETAG-534 is 400 by 300. The forecast strip is
+    drawn only on displays 240 pixels or more in height. Black is used for text
+    and icons. Red marks rain, snow, and hail, today and in the forecast.
+
+
+    Icon style mdi draws Material Design Icons, which the integration bundles.
+    Icon style emoji draws text glyphs with the font in the emoji font input.
+    The integration bundles no emoji font. Copy a monochrome emoji font, such
+    as NotoEmoji-Regular.ttf from the Noto Emoji project, to
+    config/panda_esl/fonts/ on the Home Assistant host. The renderer converts
+    the label to black, white, and red, so a colour emoji font does not help.
+
+
+    Write guarded skips the write when the rendered image matches the last
+    image and when the Write lock switch of the label is on. Every write takes
+    several seconds and refreshes the panel, so prefer it over write. Turn on
+    Dry run to render to the Preview content image entity without sending
+    Bluetooth packets.
+  input:
+    display_section:
+      name: Display
+      icon: mdi:tag-text
+      collapsed: false
+      input:
+        display:
+          name: PANDA ESL label
+          description: Label that receives the image.
+          selector:
+            device:
+              integration: panda_esl
+        display_size:
+          name: Resolution
+          description: >-
+            Resolution of the label. Use the tag ID shown for the device in
+            Bluetooth: ETAG-525 is 256 by 128, ETAG-526 is 296 by 152,
+            ETAG-530 is 360 by 240, and ETAG-534 is 400 by 300.
+          default: 360x240
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: 256 x 128 (ETAG-525, 2.13 inch)
+                  value: 256x128
+                - label: 296 x 152 (ETAG-526, 2.66 inch)
+                  value: 296x152
+                - label: 360 x 240 (ETAG-530, 3.5 inch)
+                  value: 360x240
+                - label: 400 x 300 (ETAG-534, 4.2 inch)
+                  value: 400x300
+        write_action:
+          name: Write action
+          description: >-
+            panda_esl.write_guarded applies the duplicate prevention, write
+            lock, and debounce options of the integration. panda_esl.write
+            always sends.
+          default: panda_esl.write_guarded
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: Guarded write
+                  value: panda_esl.write_guarded
+                - label: Write
+                  value: panda_esl.write
+        dry_run:
+          name: Dry run
+          description: >-
+            Renders to the Preview content image entity and does not send
+            Bluetooth packets.
+          default: false
+          selector:
+            boolean: {}
+    weather_section:
+      name: Weather
+      icon: mdi:weather-partly-cloudy
+      collapsed: false
+      input:
+        weather_entity:
+          name: Weather entity
+          description: Entity that supplies the conditions and the daily forecast.
+          selector:
+            entity:
+              filter:
+                - domain: weather
+        update_minutes:
+          name: Update interval
+          description: >-
+            How often the label is refreshed, in addition to every change of
+            the weather condition. Each refresh redraws the e-paper panel.
+          default: /30
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: Every 15 minutes
+                  value: /15
+                - label: Every 30 minutes
+                  value: /30
+                - label: Every hour
+                  value: "0"
+        show_forecast:
+          name: Show forecast
+          description: >-
+            Draws the next three days under the current conditions. Applies to
+            displays 240 pixels or more in height.
+          default: true
+          selector:
+            boolean: {}
+    style_section:
+      name: Style
+      icon: mdi:palette
+      collapsed: true
+      input:
+        icon_style:
+          name: Icon style
+          description: >-
+            mdi draws bundled Material Design Icons. emoji draws glyphs from
+            the emoji font.
+          default: mdi
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: Material Design Icons
+                  value: mdi
+                - label: Emoji
+                  value: emoji
+        emoji_font:
+          name: Emoji font
+          description: >-
+            Font file used when the icon style is emoji. A bare name is
+            resolved in config/panda_esl/fonts/ and config/www/fonts/.
+          default: NotoEmoji-Regular.ttf
+          selector:
+            text: {}
+        text_font:
+          name: Text font
+          description: >-
+            Regular weight font for labels. The bundled font is used when the
+            file is not found.
+          default: fonts/NotoSansKR-Regular.ttf
+          selector:
+            text: {}
+        bold_font:
+          name: Bold font
+          description: >-
+            Bold weight font for the temperature and values. The bundled font
+            is used when the file is not found.
+          default: fonts/NotoSansKR-Bold.ttf
+          selector:
+            text: {}
+
+variables:
+  weather_entity: !input weather_entity
+  display_size: !input display_size
+  icon_style: !input icon_style
+  use_emoji: "{{ icon_style == 'emoji' }}"
+  emoji_font: !input emoji_font
+  text_font: !input text_font
+  bold_font: !input bold_font
+  show_forecast: !input show_forecast
+  wet_conditions:
+    - rainy
+    - pouring
+    - lightning-rainy
+    - snowy
+    - snowy-rainy
+    - hail
+  mdi_icons:
+    clear-night: weather-night
+    partlycloudy: weather-partly-cloudy
+    exceptional: alert-circle-outline
+  emoji_icons:
+    clear-night: "\U0001F319"
+    cloudy: "\u2601"
+    exceptional: "\u26A0"
+    fog: "\U0001F32B"
+    hail: "\U0001F328"
+    lightning: "\u26A1"
+    lightning-rainy: "\u26C8"
+    partlycloudy: "\u26C5"
+    pouring: "\U0001F327"
+    rainy: "\U0001F327"
+    snowy: "\U0001F328"
+    snowy-rainy: "\U0001F328"
+    sunny: "\u2600"
+    windy: "\U0001F4A8"
+    windy-variant: "\U0001F4A8"
+
+triggers:
+  - trigger: homeassistant
+    event: start
+  - trigger: state
+    entity_id: !input weather_entity
+  - trigger: time_pattern
+    minutes: !input update_minutes
+
+conditions:
+  - condition: not
+    conditions:
+      - condition: state
+        entity_id: !input weather_entity
+        state:
+          - unavailable
+          - unknown
+
+actions:
+  - action: weather.get_forecasts
+    continue_on_error: true
+    target:
+      entity_id: !input weather_entity
+    data:
+      type: daily
+    response_variable: forecast_response
+  - variables:
+      forecasts: >-
+        {{ ((forecast_response | default({}, true)).get(weather_entity) or {}).get('forecast') or [] }}
+      today_fc: >-
+        {% set ns = namespace(found={}) %}
+        {% for f in forecasts %}
+          {% set d = as_datetime(f.get('datetime')) %}
+          {% if not ns.found and d is not none and as_local(d).date() == now().date() %}
+            {% set ns.found = f %}
+          {% endif %}
+        {% endfor %}
+        {{ ns.found }}
+      days: >-
+        {% set ns = namespace(items=[]) %}
+        {% for f in forecasts %}
+          {% set d = as_datetime(f.get('datetime')) %}
+          {% if d is not none and as_local(d).date() > now().date() and ns.items | count < 3 %}
+            {% set c = f.get('condition') or 'cloudy' %}
+            {% set high = f.get('temperature') %}
+            {% set low = f.get('templow') %}
+            {% set temps = (high | round(0) | int ~ ('/' ~ (low | round(0) | int) if low is number else '') ~ '°') if high is number else '--' %}
+            {% set ns.items = ns.items + [{
+              'label': as_local(d).strftime('%a'),
+              'icon': mdi_icons.get(c, 'weather-' ~ c),
+              'emoji': emoji_icons.get(c, emoji_icons['cloudy']),
+              'wet': c in wet_conditions,
+              'temps': temps
+            }] %}
+          {% endif %}
+        {% endfor %}
+        {{ ns.items }}
+      strip: >-
+        {{ show_forecast and display_size.split('x')[1] | int >= 240 and days | count > 0 }}
+      W: "{{ display_size.split('x')[0] | int }}"
+      H: "{{ display_size.split('x')[1] | int }}"
+      cond: "{{ states(weather_entity) }}"
+      cond_icon: "{{ mdi_icons.get(cond, 'weather-' ~ cond) }}"
+      cond_emoji: "{{ emoji_icons.get(cond, emoji_icons['cloudy']) }}"
+      cond_label: >-
+        {{ cond | replace('partlycloudy', 'partly cloudy') | replace('-', ' ') | title }}
+      cond_wet: "{{ cond in wet_conditions }}"
+      temp_now: >-
+        {% set t = state_attr(weather_entity, 'temperature') %}
+        {% if t is number %}{{ t | round(0) | int }}{{ state_attr(weather_entity, 'temperature_unit') or '°' }}{% else %}--{% endif %}
+      hilo: >-
+        {% set high = today_fc.get('temperature') %}
+        {% set low = today_fc.get('templow') %}
+        {% if high is number %}H {{ high | round(0) | int }}{% if low is number %} / L {{ low | round(0) | int }}{% endif %}{% endif %}
+      rain_now: >-
+        {% set p = today_fc.get('precipitation_probability') %}
+        {% if p is number %}{{ p | round(0) | int }}%{% else %}--{% endif %}
+      humidity_now: >-
+        {% set h = state_attr(weather_entity, 'humidity') %}
+        {% if h is number %}{{ h | round(0) | int }}%{% else %}--{% endif %}
+      wind_now: >-
+        {% set w = state_attr(weather_entity, 'wind_speed') %}
+        {% if w is number %}{{ w | round(0) | int }} {{ state_attr(weather_entity, 'wind_speed_unit') or '' }}{% else %}--{% endif %}
+      header_h: "{{ (H * (0.10 if strip else 0.12)) | round(0) | int }}"
+      main_bottom: "{{ (H * (0.50 if strip else 0.68)) | round(0) | int }}"
+      main_h: "{{ main_bottom - header_h }}"
+      icon_x: "{{ (W * 0.18) | round(0) | int }}"
+      icon_y: "{{ (header_h + main_h * 0.38) | round(0) | int }}"
+      icon_size: "{{ (main_h * 0.60) | round(0) | int }}"
+      label_y: "{{ (header_h + main_h * 0.84) | round(0) | int }}"
+      label_size: "{{ [9, (main_h * 0.13) | round(0) | int] | max }}"
+      temp_x: "{{ (W * 0.63) | round(0) | int }}"
+      temp_y: "{{ (header_h + main_h * 0.36) | round(0) | int }}"
+      temp_size: "{{ (main_h * 0.52) | round(0) | int }}"
+      hilo_y: "{{ (header_h + main_h * 0.80) | round(0) | int }}"
+      hilo_size: "{{ [9, (main_h * 0.15) | round(0) | int] | max }}"
+      stats_bottom: "{{ (H * 0.68) | round(0) | int if strip else H }}"
+      stats_h: "{{ stats_bottom - main_bottom }}"
+      stat_icon_y: "{{ (main_bottom + stats_h * 0.34) | round(0) | int }}"
+      stat_icon_size: "{{ (stats_h * 0.42) | round(0) | int }}"
+      stat_value_y: "{{ (main_bottom + stats_h * 0.78) | round(0) | int }}"
+      stat_value_size: "{{ [8, (stats_h * 0.24) | round(0) | int] | max }}"
+      col1_x: "{{ (W / 6) | round(0) | int }}"
+      col2_x: "{{ (W / 2) | round(0) | int }}"
+      col3_x: "{{ (W * 5 / 6) | round(0) | int }}"
+      strip_top: "{{ (H * 0.70) | round(0) | int }}"
+      strip_h: "{{ H - strip_top }}"
+      strip_label_y: "{{ (strip_top + strip_h * 0.15) | round(0) | int }}"
+      strip_icon_y: "{{ (strip_top + strip_h * 0.47) | round(0) | int }}"
+      strip_temps_y: "{{ (strip_top + strip_h * 0.84) | round(0) | int }}"
+      strip_icon_size: "{{ (strip_h * 0.34) | round(0) | int }}"
+      strip_text_size: "{{ [8, (strip_h * 0.17) | round(0) | int] | max }}"
+      day1_x: "{{ (W / 6) | round(0) | int }}"
+      day2_x: "{{ (W / 2) | round(0) | int }}"
+      day3_x: "{{ (W * 5 / 6) | round(0) | int }}"
+  - action: !input write_action
+    target:
+      device_id: !input display
+    data:
+      background: white
+      dry_run: !input dry_run
+      payload:
+        # Header: date on the left, update time on the right.
+        - type: rectangle
+          x_start: 0
+          y_start: 0
+          x_end: "{{ W - 1 }}"
+          y_end: "{{ header_h }}"
+          fill: black
+          outline: black
+        - type: text
+          value: "{{ now().strftime('%a %d %b') }}"
+          x: "{{ (W * 0.03) | round(0) | int }}"
+          "y": "{{ (header_h / 2) | round(0) | int }}"
+          size: "{{ [8, (header_h * 0.6) | round(0) | int] | max }}"
+          color: white
+          anchor: lm
+          font: "{{ bold_font }}"
+        - type: text
+          value: "{{ now().strftime('%H:%M') }}"
+          x: "{{ (W * 0.97) | round(0) | int }}"
+          "y": "{{ (header_h / 2) | round(0) | int }}"
+          size: "{{ [8, (header_h * 0.6) | round(0) | int] | max }}"
+          color: white
+          anchor: rm
+          font: "{{ text_font }}"
+        # Current condition.
+        - type: icon
+          value: "{{ cond_icon }}"
+          x: "{{ icon_x }}"
+          "y": "{{ icon_y }}"
+          size: "{{ icon_size }}"
+          color: "{{ 'red' if cond_wet else 'black' }}"
+          anchor: mm
+          visible: "{{ not use_emoji }}"
+        - type: text
+          value: "{{ cond_emoji }}"
+          x: "{{ icon_x }}"
+          "y": "{{ icon_y }}"
+          size: "{{ icon_size }}"
+          color: "{{ 'red' if cond_wet else 'black' }}"
+          anchor: mm
+          font: "{{ emoji_font }}"
+          visible: "{{ use_emoji }}"
+        - type: text
+          value: "{{ cond_label }}"
+          x: "{{ icon_x }}"
+          "y": "{{ label_y }}"
+          size: "{{ label_size }}"
+          color: black
+          anchor: mm
+          font: "{{ bold_font }}"
+        - type: text
+          value: "{{ temp_now }}"
+          x: "{{ temp_x }}"
+          "y": "{{ temp_y }}"
+          size: "{{ temp_size }}"
+          color: black
+          anchor: mm
+          font: "{{ bold_font }}"
+        - type: text
+          value: "{{ hilo }}"
+          x: "{{ temp_x }}"
+          "y": "{{ hilo_y }}"
+          size: "{{ hilo_size }}"
+          color: black
+          anchor: mm
+          font: "{{ bold_font }}"
+          visible: "{{ hilo | length > 0 }}"
+        # Rain, humidity, and wind.
+        - type: line
+          x_start: "{{ (W * 0.03) | round(0) | int }}"
+          x_end: "{{ (W * 0.97) | round(0) | int }}"
+          y_start: "{{ main_bottom }}"
+          y_end: "{{ main_bottom }}"
+          width: 1
+          fill: black
+        - type: icon
+          value: umbrella
+          x: "{{ col1_x }}"
+          "y": "{{ stat_icon_y }}"
+          size: "{{ stat_icon_size }}"
+          color: red
+          anchor: mm
+          visible: "{{ not use_emoji }}"
+        - type: text
+          value: "\u2614"
+          x: "{{ col1_x }}"
+          "y": "{{ stat_icon_y }}"
+          size: "{{ stat_icon_size }}"
+          color: red
+          anchor: mm
+          font: "{{ emoji_font }}"
+          visible: "{{ use_emoji }}"
+        - type: text
+          value: "{{ rain_now }}"
+          x: "{{ col1_x }}"
+          "y": "{{ stat_value_y }}"
+          size: "{{ stat_value_size }}"
+          color: black
+          anchor: mm
+          font: "{{ bold_font }}"
+        - type: icon
+          value: water-percent
+          x: "{{ col2_x }}"
+          "y": "{{ stat_icon_y }}"
+          size: "{{ stat_icon_size }}"
+          color: black
+          anchor: mm
+          visible: "{{ not use_emoji }}"
+        - type: text
+          value: "\U0001F4A7"
+          x: "{{ col2_x }}"
+          "y": "{{ stat_icon_y }}"
+          size: "{{ stat_icon_size }}"
+          color: black
+          anchor: mm
+          font: "{{ emoji_font }}"
+          visible: "{{ use_emoji }}"
+        - type: text
+          value: "{{ humidity_now }}"
+          x: "{{ col2_x }}"
+          "y": "{{ stat_value_y }}"
+          size: "{{ stat_value_size }}"
+          color: black
+          anchor: mm
+          font: "{{ bold_font }}"
+        - type: icon
+          value: weather-windy
+          x: "{{ col3_x }}"
+          "y": "{{ stat_icon_y }}"
+          size: "{{ stat_icon_size }}"
+          color: black
+          anchor: mm
+          visible: "{{ not use_emoji }}"
+        - type: text
+          value: "\U0001F4A8"
+          x: "{{ col3_x }}"
+          "y": "{{ stat_icon_y }}"
+          size: "{{ stat_icon_size }}"
+          color: black
+          anchor: mm
+          font: "{{ emoji_font }}"
+          visible: "{{ use_emoji }}"
+        - type: text
+          value: "{{ wind_now }}"
+          x: "{{ col3_x }}"
+          "y": "{{ stat_value_y }}"
+          size: "{{ stat_value_size }}"
+          color: black
+          anchor: mm
+          font: "{{ bold_font }}"
+        # Forecast strip, three days.
+        - type: line
+          x_start: "{{ (W * 0.03) | round(0) | int }}"
+          x_end: "{{ (W * 0.97) | round(0) | int }}"
+          y_start: "{{ strip_top - 2 }}"
+          y_end: "{{ strip_top - 2 }}"
+          width: 1
+          fill: black
+          visible: "{{ strip }}"
+        - type: line
+          x_start: "{{ (W / 3) | round(0) | int }}"
+          x_end: "{{ (W / 3) | round(0) | int }}"
+          y_start: "{{ strip_top + 4 }}"
+          y_end: "{{ H - 4 }}"
+          width: 1
+          fill: black
+          visible: "{{ strip }}"
+        - type: line
+          x_start: "{{ (W * 2 / 3) | round(0) | int }}"
+          x_end: "{{ (W * 2 / 3) | round(0) | int }}"
+          y_start: "{{ strip_top + 4 }}"
+          y_end: "{{ H - 4 }}"
+          width: 1
+          fill: black
+          visible: "{{ strip }}"
+        - type: text
+          value: "{{ days[0].label if days | count > 0 else '' }}"
+          x: "{{ day1_x }}"
+          "y": "{{ strip_label_y }}"
+          size: "{{ strip_text_size }}"
+          color: black
+          anchor: mm
+          font: "{{ bold_font }}"
+          visible: "{{ strip and days | count > 0 }}"
+        - type: icon
+          value: "{{ days[0].icon if days | count > 0 else 'weather-cloudy' }}"
+          x: "{{ day1_x }}"
+          "y": "{{ strip_icon_y }}"
+          size: "{{ strip_icon_size }}"
+          color: "{{ 'red' if days | count > 0 and days[0].wet else 'black' }}"
+          anchor: mm
+          visible: "{{ strip and not use_emoji and days | count > 0 }}"
+        - type: text
+          value: "{{ days[0].emoji if days | count > 0 else '' }}"
+          x: "{{ day1_x }}"
+          "y": "{{ strip_icon_y }}"
+          size: "{{ strip_icon_size }}"
+          color: "{{ 'red' if days | count > 0 and days[0].wet else 'black' }}"
+          anchor: mm
+          font: "{{ emoji_font }}"
+          visible: "{{ strip and use_emoji and days | count > 0 }}"
+        - type: text
+          value: "{{ days[0].temps if days | count > 0 else '' }}"
+          x: "{{ day1_x }}"
+          "y": "{{ strip_temps_y }}"
+          size: "{{ strip_text_size }}"
+          color: black
+          anchor: mm
+          font: "{{ text_font }}"
+          visible: "{{ strip and days | count > 0 }}"
+        - type: text
+          value: "{{ days[1].label if days | count > 1 else '' }}"
+          x: "{{ day2_x }}"
+          "y": "{{ strip_label_y }}"
+          size: "{{ strip_text_size }}"
+          color: black
+          anchor: mm
+          font: "{{ bold_font }}"
+          visible: "{{ strip and days | count > 1 }}"
+        - type: icon
+          value: "{{ days[1].icon if days | count > 1 else 'weather-cloudy' }}"
+          x: "{{ day2_x }}"
+          "y": "{{ strip_icon_y }}"
+          size: "{{ strip_icon_size }}"
+          color: "{{ 'red' if days | count > 1 and days[1].wet else 'black' }}"
+          anchor: mm
+          visible: "{{ strip and not use_emoji and days | count > 1 }}"
+        - type: text
+          value: "{{ days[1].emoji if days | count > 1 else '' }}"
+          x: "{{ day2_x }}"
+          "y": "{{ strip_icon_y }}"
+          size: "{{ strip_icon_size }}"
+          color: "{{ 'red' if days | count > 1 and days[1].wet else 'black' }}"
+          anchor: mm
+          font: "{{ emoji_font }}"
+          visible: "{{ strip and use_emoji and days | count > 1 }}"
+        - type: text
+          value: "{{ days[1].temps if days | count > 1 else '' }}"
+          x: "{{ day2_x }}"
+          "y": "{{ strip_temps_y }}"
+          size: "{{ strip_text_size }}"
+          color: black
+          anchor: mm
+          font: "{{ text_font }}"
+          visible: "{{ strip and days | count > 1 }}"
+        - type: text
+          value: "{{ days[2].label if days | count > 2 else '' }}"
+          x: "{{ day3_x }}"
+          "y": "{{ strip_label_y }}"
+          size: "{{ strip_text_size }}"
+          color: black
+          anchor: mm
+          font: "{{ bold_font }}"
+          visible: "{{ strip and days | count > 2 }}"
+        - type: icon
+          value: "{{ days[2].icon if days | count > 2 else 'weather-cloudy' }}"
+          x: "{{ day3_x }}"
+          "y": "{{ strip_icon_y }}"
+          size: "{{ strip_icon_size }}"
+          color: "{{ 'red' if days | count > 2 and days[2].wet else 'black' }}"
+          anchor: mm
+          visible: "{{ strip and not use_emoji and days | count > 2 }}"
+        - type: text
+          value: "{{ days[2].emoji if days | count > 2 else '' }}"
+          x: "{{ day3_x }}"
+          "y": "{{ strip_icon_y }}"
+          size: "{{ strip_icon_size }}"
+          color: "{{ 'red' if days | count > 2 and days[2].wet else 'black' }}"
+          anchor: mm
+          font: "{{ emoji_font }}"
+          visible: "{{ strip and use_emoji and days | count > 2 }}"
+        - type: text
+          value: "{{ days[2].temps if days | count > 2 else '' }}"
+          x: "{{ day3_x }}"
+          "y": "{{ strip_temps_y }}"
+          size: "{{ strip_text_size }}"
+          color: black
+          anchor: mm
+          font: "{{ text_font }}"
+          visible: "{{ strip and days | count > 2 }}"
+
+mode: single
+max_exceeded: silent
