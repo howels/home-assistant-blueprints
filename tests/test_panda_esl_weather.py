@@ -19,6 +19,12 @@ from homeassistant.util import dt as dt_util
 BP = Path(__file__).resolve().parents[1] / "blueprints/panda_esl_weather.yaml"
 WEATHER = "weather.home"
 
+@pytest.fixture(autouse=True)
+def midday(freezer):
+    """Local midday, so that events two hours ahead stay on the same day."""
+    freezer.move_to("2026-11-25 20:00:00+00:00")
+
+
 
 async def pump(n=300):
     for _ in range(n):
@@ -127,7 +133,7 @@ async def test_defaults(hass):
     assert data["device_id"] == ["dev1"]
     t = texts(data)
     assert "12°C" in t
-    assert "H 14 / L 6" in t
+    assert "↑14°  ↓6°" in t
     assert "Partly Cloudy" in t
     assert "80%" not in t  # tomorrow's rain chance is not today's
     assert "10%" not in t
@@ -139,8 +145,8 @@ async def test_defaults(hass):
     assert "weather-partly-cloudy" in icons(data)
     assert "weather-night" in icons(data)
     assert "weather-snowy" not in icons(data)  # fourth day beyond the strip
-    assert "9/-2°" in t
-    assert "11/7°" in t and "12/5°" in t
+    assert "↑9°  ↓-2°" in t
+    assert "↑11°  ↓7°" in t and "↑12°  ↓5°" in t
     reds = [e["value"] for e in visible(data) if e.get("color") == "red"]
     assert "weather-rainy" in reds
     assert all(e["y"] is not True for e in data["payload"] if "y" in e)
@@ -191,7 +197,7 @@ async def test_no_forecast_support(hass):
     t = texts(data)
     assert "12°C" in t
     assert "--" in t  # rain chance unknown
-    assert not any("H " in x for x in t)
+    assert not any("↑" in x for x in t)
     assert "weather-rainy" not in icons(data)
     assert len(visible(data)) < len(data["payload"])
 
@@ -200,7 +206,7 @@ async def test_forecast_switch_off(hass):
     calls, _ = await setup(hass, {"show_forecast": False})
     _, data = await run(hass, calls)
     assert "weather-rainy" not in icons(data)
-    assert "11/7°" not in texts(data)
+    assert "↑11°  ↓7°" not in texts(data)
 
 
 async def test_write_and_dry_run(hass):

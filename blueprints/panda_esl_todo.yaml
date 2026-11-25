@@ -1,0 +1,340 @@
+blueprint:
+  name: PANDA ESL to-do list
+  author: howels
+  domain: automation
+  source_url: https://github.com/howels/home-assistant-blueprints/blob/main/blueprints/panda_esl_todo.yaml
+  description: >-
+    Draws the open items of a Home Assistant to-do list on a PANDA / ETAG
+    Bluetooth e-paper label. Requires the PANDA ESL integration
+    (https://github.com/moryoav/ha-panda).
+
+
+    todo.get_items returns the items with status needs_action. Each item is a
+    row with a checkbox, the summary, and the due date. A due date in the past
+    is drawn in red with its date. Today and Tomorrow are written out. An item
+    with no due date has no date column. When more items exist than rows fit,
+    the last row reads "+N more".
+
+
+    Any to-do entity works: Google Tasks, Todoist, Local To-do, and Shopping
+    list. The automation runs at Home Assistant start, when the to-do entity
+    changes state, and on the selected interval. The state of a to-do entity is
+    its count of open items, so editing an item without changing the count is
+    shown at the next interval. A state change starts a wait of the settle time,
+    so a burst of edits is written once. The write action and the dry run input
+    behave as in the PANDA ESL weather display blueprint. Panel rows are sized
+    from the resolution. Text is truncated with an ellipsis to fit its row.
+
+
+    Icon style emoji draws the header glyph from the emoji font. The integration
+    bundles no emoji font. Copy a monochrome emoji font, such as
+    NotoEmoji-Regular.ttf from the Noto Emoji project, to
+    config/panda_esl/fonts/ on the Home Assistant host. Emoji in the item
+    summaries are drawn by the text font, which has no emoji glyphs.
+  input:
+    display_section:
+      name: Display
+      icon: mdi:tag-text
+      collapsed: false
+      input:
+        display:
+          name: PANDA ESL label
+          description: Label that receives the image.
+          selector:
+            device:
+              integration: panda_esl
+        display_size:
+          name: Resolution
+          description: >-
+            Resolution of the label. ETAG-525 is 256 by 128, ETAG-526 is 296 by
+            152, ETAG-530 is 360 by 240, and ETAG-534 is 400 by 300.
+          default: 360x240
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: 256 x 128 (ETAG-525, 2.13 inch)
+                  value: 256x128
+                - label: 296 x 152 (ETAG-526, 2.66 inch)
+                  value: 296x152
+                - label: 360 x 240 (ETAG-530, 3.5 inch)
+                  value: 360x240
+                - label: 400 x 300 (ETAG-534, 4.2 inch)
+                  value: 400x300
+        write_action:
+          name: Write action
+          description: >-
+            panda_esl.write_guarded applies the duplicate prevention, write
+            lock, and debounce options of the integration. panda_esl.write
+            always sends.
+          default: panda_esl.write_guarded
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: Guarded write
+                  value: panda_esl.write_guarded
+                - label: Write
+                  value: panda_esl.write
+        dry_run:
+          name: Dry run
+          description: >-
+            Renders to the Preview content image entity and does not send
+            Bluetooth packets.
+          default: false
+          selector:
+            boolean: {}
+    list_section:
+      name: To-do list
+      icon: mdi:format-list-checks
+      collapsed: false
+      input:
+        todo_entity:
+          name: To-do entity
+          description: List whose open items are drawn.
+          selector:
+            entity:
+              filter:
+                - domain: todo
+        title:
+          name: Title
+          description: Header text. Leave empty to use the name of the entity.
+          default: ""
+          selector:
+            text: {}
+        max_items:
+          name: Maximum items
+          description: >-
+            Upper limit on the rows. The resolution also limits the rows. The
+            3.5 inch label fits 7 rows including the "+N more" row.
+          default: 8
+          selector:
+            number:
+              min: 1
+              max: 12
+              step: 1
+              mode: box
+        update_minutes:
+          name: Update interval
+          description: >-
+            How often the label is refreshed, in addition to every change in
+            the number of open items. Each refresh redraws the e-paper panel.
+          default: "0"
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: Every hour
+                  value: "0"
+                - label: Every 30 minutes
+                  value: /30
+        settle_seconds:
+          name: Settle time
+          description: >-
+            Wait after a change before the write. A further change in that time
+            restarts the wait.
+          default: 60
+          selector:
+            number:
+              min: 0
+              max: 600
+              step: 5
+              unit_of_measurement: s
+              mode: box
+    style_section:
+      name: Style
+      icon: mdi:palette
+      collapsed: true
+      input:
+        icon_style:
+          name: Icon style
+          description: >-
+            mdi draws a bundled Material Design Icon in the header. emoji draws
+            a glyph from the emoji font.
+          default: mdi
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: Material Design Icons
+                  value: mdi
+                - label: Emoji
+                  value: emoji
+        emoji_font:
+          name: Emoji font
+          description: Font file used when the icon style is emoji.
+          default: NotoEmoji-Regular.ttf
+          selector:
+            text: {}
+        text_font:
+          name: Text font
+          description: Regular weight font for the items.
+          default: fonts/NotoSansKR-Regular.ttf
+          selector:
+            text: {}
+        bold_font:
+          name: Bold font
+          description: Bold weight font for the header.
+          default: fonts/NotoSansKR-Bold.ttf
+          selector:
+            text: {}
+
+variables:
+  todo_entity: !input todo_entity
+  title_input: !input title
+  display_size: !input display_size
+  max_items: !input max_items
+  icon_style: !input icon_style
+  use_emoji: "{{ icon_style == 'emoji' }}"
+  emoji_font: !input emoji_font
+  text_font: !input text_font
+  bold_font: !input bold_font
+
+triggers:
+  - trigger: homeassistant
+    event: start
+  - trigger: state
+    entity_id: !input todo_entity
+    id: change
+  - trigger: time_pattern
+    minutes: !input update_minutes
+
+conditions:
+  - condition: not
+    conditions:
+      - condition: state
+        entity_id: !input todo_entity
+        state:
+          - unavailable
+          - unknown
+
+actions:
+  - if:
+      - condition: trigger
+        id: change
+    then:
+      - delay:
+          seconds: !input settle_seconds
+  - action: todo.get_items
+    target:
+      entity_id: !input todo_entity
+    data:
+      status: needs_action
+    response_variable: todo_response
+  - variables:
+      open_items: >-
+        {{ ((todo_response | default({}, true)).get(todo_entity) or {}).get('items') or [] }}
+      W: "{{ display_size.split('x')[0] | int }}"
+      H: "{{ display_size.split('x')[1] | int }}"
+      title: >-
+        {{ title_input if title_input else (state_attr(todo_entity, 'friendly_name') or 'To-do') }}
+      pad: "{{ (W * 0.03) | round(0) | int }}"
+      header_h: "{{ (H * 0.13) | round(0) | int }}"
+      header_size: "{{ (header_h * 0.62) | round(0) | int }}"
+      glyph_size: "{{ (header_h * 0.74) | round(0) | int }}"
+      row_h: "{{ (H * 0.12) | round(0) | int }}"
+      size: "{{ (row_h * 0.66) | round(0) | int }}"
+      box: "{{ (row_h * 0.50) | round(0) | int }}"
+      body_top: "{{ header_h + 3 }}"
+      fit: "{{ ((H - body_top) / row_h) | int }}"
+      rows: "{{ [fit, max_items | int] | min }}"
+      overflow: "{{ open_items | count > rows }}"
+      shown: "{{ rows - 1 if overflow else rows }}"
+      char_w: "{{ 0.5 * size }}"
+      payload: >-
+        {% set ns = namespace(p=[]) %}
+        {% set ns.p = ns.p + [{
+          'type': 'rectangle', 'x_start': 0, 'y_start': 0, 'x_end': W - 1, 'y_end': header_h,
+          'fill': 'black', 'outline': 'black'
+        }] %}
+        {% if use_emoji %}
+          {% set ns.p = ns.p + [{
+            'type': 'text', 'value': '✅', 'x': pad + (glyph_size / 2) | round(0) | int,
+            'y': (header_h / 2) | round(0) | int, 'size': glyph_size, 'color': 'white',
+            'anchor': 'mm', 'font': emoji_font
+          }] %}
+        {% else %}
+          {% set ns.p = ns.p + [{
+            'type': 'icon', 'value': 'format-list-checks', 'x': pad + (glyph_size / 2) | round(0) | int,
+            'y': (header_h / 2) | round(0) | int, 'size': glyph_size, 'color': 'white', 'anchor': 'mm'
+          }] %}
+        {% endif %}
+        {% set count_text = (open_items | count) ~ ' left' %}
+        {% set title_max = ((W - 2 * pad - glyph_size - ((count_text | length) + 2) * 0.6 * header_size) / (0.6 * header_size)) | int %}
+        {% set ns.p = ns.p + [{
+          'type': 'text', 'value': title if title | length <= title_max else title[:title_max - 1] ~ '…',
+          'x': pad + glyph_size + pad, 'y': (header_h / 2) | round(0) | int, 'size': header_size,
+          'color': 'white', 'anchor': 'lm', 'font': bold_font
+        }, {
+          'type': 'text', 'value': count_text, 'x': W - pad, 'y': (header_h / 2) | round(0) | int,
+          'size': header_size, 'color': 'white', 'anchor': 'rm', 'font': text_font
+        }] %}
+        {% if open_items | count == 0 %}
+          {% if use_emoji %}
+            {% set ns.p = ns.p + [{
+              'type': 'text', 'value': '✅', 'x': (W / 2) | round(0) | int,
+              'y': (header_h + (H - header_h) * 0.40) | round(0) | int,
+              'size': (H * 0.30) | round(0) | int, 'color': 'black', 'anchor': 'mm', 'font': emoji_font
+            }] %}
+          {% else %}
+            {% set ns.p = ns.p + [{
+              'type': 'icon', 'value': 'check-circle-outline', 'x': (W / 2) | round(0) | int,
+              'y': (header_h + (H - header_h) * 0.40) | round(0) | int,
+              'size': (H * 0.30) | round(0) | int, 'color': 'black', 'anchor': 'mm'
+            }] %}
+          {% endif %}
+          {% set ns.p = ns.p + [{
+            'type': 'text', 'value': 'Nothing to do', 'x': (W / 2) | round(0) | int,
+            'y': (header_h + (H - header_h) * 0.80) | round(0) | int,
+            'size': (size * 1.2) | round(0) | int, 'color': 'black', 'anchor': 'mm', 'font': bold_font
+          }] %}
+        {% endif %}
+        {% for it in open_items[:shown] %}
+          {% set y = (body_top + (loop.index0 + 0.5) * row_h) | round(0) | int %}
+          {% set due = as_datetime(it.get('due')) if it.get('due') else none %}
+          {% set days = (as_local(due).date() - now().date()).days if due is not none else none %}
+          {% if days is none %}
+            {% set due_text = '' %}
+          {% elif days == 0 %}
+            {% set due_text = 'Today' %}
+          {% elif days == 1 %}
+            {% set due_text = 'Tomorrow' %}
+          {% else %}
+            {% set due_text = as_local(due).strftime('%a %d %b') if days < 0 or days > 6 else as_local(due).strftime('%a') %}
+          {% endif %}
+          {% set text_x = pad + box + pad %}
+          {% set due_w = ((due_text | length) + 1) * char_w if due_text else 0 %}
+          {% set max_chars = ((W - text_x - pad - due_w) / char_w) | int %}
+          {% set summary = it.get('summary') or '' %}
+          {% set ns.p = ns.p + [{
+            'type': 'rectangle', 'x_start': pad, 'y_start': y - (box / 2) | round(0) | int,
+            'x_end': pad + box, 'y_end': y + (box / 2) | round(0) | int,
+            'outline': 'black', 'fill': 'white', 'width': 2
+          }, {
+            'type': 'text', 'value': summary if summary | length <= max_chars else summary[:max_chars - 1] ~ '…',
+            'x': text_x, 'y': y, 'size': size, 'color': 'black', 'anchor': 'lm', 'font': text_font
+          }] %}
+          {% if due_text %}
+            {% set ns.p = ns.p + [{
+              'type': 'text', 'value': due_text, 'x': W - pad, 'y': y, 'size': size,
+              'color': 'red' if days < 0 else 'black', 'anchor': 'rm', 'font': bold_font
+            }] %}
+          {% endif %}
+        {% endfor %}
+        {% if overflow %}
+          {% set ns.p = ns.p + [{
+            'type': 'text', 'value': '+' ~ (open_items | count - shown) ~ ' more', 'x': pad,
+            'y': (body_top + (shown + 0.5) * row_h) | round(0) | int, 'size': size,
+            'color': 'red', 'anchor': 'lm', 'font': bold_font
+          }] %}
+        {% endif %}
+        {{ ns.p }}
+  - action: !input write_action
+    target:
+      device_id: !input display
+    data:
+      background: white
+      dry_run: !input dry_run
+      payload: "{{ payload }}"
+
+mode: restart

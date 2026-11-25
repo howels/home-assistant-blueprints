@@ -1,0 +1,346 @@
+blueprint:
+  name: PANDA ESL alerts
+  author: howels
+  domain: automation
+  source_url: https://github.com/howels/home-assistant-blueprints/blob/main/blueprints/panda_esl_alerts.yaml
+  description: >-
+    Lists the entities that are in a problem state on a PANDA / ETAG Bluetooth
+    e-paper label. Requires the PANDA ESL integration
+    (https://github.com/moryoav/ha-panda).
+
+
+    Home Assistant offers no action that lists persistent notifications, so an
+    automation cannot draw them. This blueprint draws entity states instead. Pick
+    the entities to watch, such as door and window sensors, low battery
+    binary sensors, locks, leak sensors, and Alert integration entities. An
+    entity is listed while its state is one of the active states. Each row has
+    a warning marker, the friendly name, and the time since the entity changed
+    state in minutes, hours, or days. The newest change is listed first. When no
+    watched entity is active, the label shows All clear. When more entities are
+    active than rows fit, the last row reads "+N more".
+
+
+    The automation runs at Home Assistant start, when a watched entity changes
+    state, and on the selected interval. A state change starts a wait of the
+    settle time, so several entities that change together are written once. The
+    write action and the dry run input behave as in the PANDA ESL weather display
+    blueprint.
+
+
+    Icon style emoji draws the markers from the emoji font. The integration
+    bundles no emoji font. Copy a monochrome emoji font, such as
+    NotoEmoji-Regular.ttf from the Noto Emoji project, to
+    config/panda_esl/fonts/ on the Home Assistant host.
+  input:
+    display_section:
+      name: Display
+      icon: mdi:tag-text
+      collapsed: false
+      input:
+        display:
+          name: PANDA ESL label
+          description: Label that receives the image.
+          selector:
+            device:
+              integration: panda_esl
+        display_size:
+          name: Resolution
+          description: >-
+            Resolution of the label. ETAG-525 is 256 by 128, ETAG-526 is 296 by
+            152, ETAG-530 is 360 by 240, and ETAG-534 is 400 by 300.
+          default: 360x240
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: 256 x 128 (ETAG-525, 2.13 inch)
+                  value: 256x128
+                - label: 296 x 152 (ETAG-526, 2.66 inch)
+                  value: 296x152
+                - label: 360 x 240 (ETAG-530, 3.5 inch)
+                  value: 360x240
+                - label: 400 x 300 (ETAG-534, 4.2 inch)
+                  value: 400x300
+        write_action:
+          name: Write action
+          description: >-
+            panda_esl.write_guarded applies the duplicate prevention, write
+            lock, and debounce options of the integration. panda_esl.write
+            always sends.
+          default: panda_esl.write_guarded
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: Guarded write
+                  value: panda_esl.write_guarded
+                - label: Write
+                  value: panda_esl.write
+        dry_run:
+          name: Dry run
+          description: >-
+            Renders to the Preview content image entity and does not send
+            Bluetooth packets.
+          default: false
+          selector:
+            boolean: {}
+    alerts_section:
+      name: Alerts
+      icon: mdi:alert-circle
+      collapsed: false
+      input:
+        entities:
+          name: Entities
+          description: Entities to watch.
+          selector:
+            entity:
+              multiple: true
+        active_states:
+          name: Active states
+          description: >-
+            States that put an entity on the list. Type a value and confirm it
+            to add a state that is not in the list.
+          default:
+            - "on"
+            - open
+            - unlocked
+          selector:
+            select:
+              multiple: true
+              custom_value: true
+              mode: dropdown
+              options:
+                - "on"
+                - open
+                - unlocked
+                - unavailable
+                - problem
+                - low
+        title:
+          name: Title
+          description: Header text.
+          default: Alerts
+          selector:
+            text: {}
+        max_items:
+          name: Maximum rows
+          description: >-
+            Upper limit on the rows. The resolution also limits the rows. The
+            3.5 inch label fits 7 rows including the "+N more" row.
+          default: 8
+          selector:
+            number:
+              min: 1
+              max: 12
+              step: 1
+              mode: box
+        update_minutes:
+          name: Update interval
+          description: >-
+            How often the label is refreshed, in addition to every state change
+            of a watched entity. Each refresh redraws the e-paper panel.
+          default: "0"
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: Every hour
+                  value: "0"
+                - label: Every 30 minutes
+                  value: /30
+        settle_seconds:
+          name: Settle time
+          description: >-
+            Wait after a state change before the write. A further change in that
+            time restarts the wait.
+          default: 60
+          selector:
+            number:
+              min: 0
+              max: 600
+              step: 5
+              unit_of_measurement: s
+              mode: box
+    style_section:
+      name: Style
+      icon: mdi:palette
+      collapsed: true
+      input:
+        icon_style:
+          name: Icon style
+          description: >-
+            mdi draws a bundled Material Design Icon in the header. emoji draws
+            a glyph from the emoji font.
+          default: mdi
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: Material Design Icons
+                  value: mdi
+                - label: Emoji
+                  value: emoji
+        emoji_font:
+          name: Emoji font
+          description: Font file used when the icon style is emoji.
+          default: NotoEmoji-Regular.ttf
+          selector:
+            text: {}
+        text_font:
+          name: Text font
+          description: Regular weight font for the entity names.
+          default: fonts/NotoSansKR-Regular.ttf
+          selector:
+            text: {}
+        bold_font:
+          name: Bold font
+          description: Bold weight font for the header.
+          default: fonts/NotoSansKR-Bold.ttf
+          selector:
+            text: {}
+
+variables:
+  watched: !input entities
+  active_states: !input active_states
+  title: !input title
+  display_size: !input display_size
+  max_items: !input max_items
+  icon_style: !input icon_style
+  use_emoji: "{{ icon_style == 'emoji' }}"
+  emoji_font: !input emoji_font
+  text_font: !input text_font
+  bold_font: !input bold_font
+
+triggers:
+  - trigger: homeassistant
+    event: start
+  - trigger: state
+    entity_id: !input entities
+    id: change
+  - trigger: time_pattern
+    minutes: !input update_minutes
+
+actions:
+  - if:
+      - condition: trigger
+        id: change
+    then:
+      - delay:
+          seconds: !input settle_seconds
+  - variables:
+      W: "{{ display_size.split('x')[0] | int }}"
+      H: "{{ display_size.split('x')[1] | int }}"
+      alerts: >-
+        {% set ns = namespace(rows=[]) %}
+        {% for eid in watched %}
+          {% if states(eid) in active_states %}
+            {% set secs = (now() - states[eid].last_changed).total_seconds() %}
+            {% set age = ((secs / 60) | int) ~ 'm' if secs < 3600 else (((secs / 3600) | int) ~ 'h' if secs < 86400 else ((secs / 86400) | int) ~ 'd') %}
+            {% set ns.rows = ns.rows + [{
+              'ts': as_timestamp(states[eid].last_changed), 'age': age,
+              'name': state_attr(eid, 'friendly_name') or eid
+            }] %}
+          {% endif %}
+        {% endfor %}
+        {{ ns.rows | sort(attribute='ts', reverse=true) }}
+      pad: "{{ (W * 0.03) | round(0) | int }}"
+      header_h: "{{ (H * 0.13) | round(0) | int }}"
+      header_size: "{{ (header_h * 0.62) | round(0) | int }}"
+      glyph_size: "{{ (header_h * 0.74) | round(0) | int }}"
+      row_h: "{{ (H * 0.12) | round(0) | int }}"
+      size: "{{ (row_h * 0.66) | round(0) | int }}"
+      marker_size: "{{ (row_h * 0.72) | round(0) | int }}"
+      body_top: "{{ header_h + 3 }}"
+      fit: "{{ ((H - body_top) / row_h) | int }}"
+      rows: "{{ [fit, max_items | int] | min }}"
+      overflow: "{{ alerts | count > rows }}"
+      shown: "{{ rows - 1 if overflow else rows }}"
+      text_x: "{{ pad + marker_size + pad }}"
+      age_w: "{{ 4 * 0.6 * size }}"
+      max_chars: "{{ ((W - text_x - pad - age_w) / (0.5 * size)) | int }}"
+      count_text: "{{ alerts | count }} active"
+      payload: >-
+        {% set ns = namespace(p=[]) %}
+        {% set ns.p = ns.p + [{
+          'type': 'rectangle', 'x_start': 0, 'y_start': 0, 'x_end': W - 1, 'y_end': header_h,
+          'fill': 'red' if alerts | count > 0 else 'black', 'outline': 'red' if alerts | count > 0 else 'black'
+        }] %}
+        {% if use_emoji %}
+          {% set ns.p = ns.p + [{
+            'type': 'text', 'value': '⚠', 'x': pad + (glyph_size / 2) | round(0) | int,
+            'y': (header_h / 2) | round(0) | int, 'size': glyph_size, 'color': 'white',
+            'anchor': 'mm', 'font': emoji_font
+          }] %}
+        {% else %}
+          {% set ns.p = ns.p + [{
+            'type': 'icon', 'value': 'alert-outline', 'x': pad + (glyph_size / 2) | round(0) | int,
+            'y': (header_h / 2) | round(0) | int, 'size': glyph_size, 'color': 'white', 'anchor': 'mm'
+          }] %}
+        {% endif %}
+        {% set title_max = ((W - 2 * pad - glyph_size - ((count_text | length) + 2) * 0.55 * header_size) / (0.6 * header_size)) | int %}
+        {% set ns.p = ns.p + [{
+          'type': 'text', 'value': title if title | length <= title_max else title[:title_max - 1] ~ '…',
+          'x': pad + glyph_size + pad, 'y': (header_h / 2) | round(0) | int, 'size': header_size,
+          'color': 'white', 'anchor': 'lm', 'font': bold_font
+        }, {
+          'type': 'text', 'value': count_text, 'x': W - pad, 'y': (header_h / 2) | round(0) | int,
+          'size': header_size, 'color': 'white', 'anchor': 'rm', 'font': text_font
+        }] %}
+        {% if alerts | count == 0 %}
+          {% if use_emoji %}
+            {% set ns.p = ns.p + [{
+              'type': 'text', 'value': '✅', 'x': (W / 2) | round(0) | int,
+              'y': (header_h + (H - header_h) * 0.40) | round(0) | int,
+              'size': (H * 0.30) | round(0) | int, 'color': 'black', 'anchor': 'mm', 'font': emoji_font
+            }] %}
+          {% else %}
+            {% set ns.p = ns.p + [{
+              'type': 'icon', 'value': 'check-circle-outline', 'x': (W / 2) | round(0) | int,
+              'y': (header_h + (H - header_h) * 0.40) | round(0) | int,
+              'size': (H * 0.30) | round(0) | int, 'color': 'black', 'anchor': 'mm'
+            }] %}
+          {% endif %}
+          {% set ns.p = ns.p + [{
+            'type': 'text', 'value': 'All clear', 'x': (W / 2) | round(0) | int,
+            'y': (header_h + (H - header_h) * 0.80) | round(0) | int,
+            'size': (size * 1.2) | round(0) | int, 'color': 'black', 'anchor': 'mm', 'font': bold_font
+          }] %}
+        {% endif %}
+        {% for a in alerts[:shown] %}
+          {% set y = (body_top + (loop.index0 + 0.5) * row_h) | round(0) | int %}
+          {% if use_emoji %}
+            {% set ns.p = ns.p + [{
+              'type': 'text', 'value': '⚠', 'x': pad + (marker_size / 2) | round(0) | int, 'y': y,
+              'size': marker_size, 'color': 'red', 'anchor': 'mm', 'font': emoji_font
+            }] %}
+          {% else %}
+            {% set ns.p = ns.p + [{
+              'type': 'icon', 'value': 'alert', 'x': pad + (marker_size / 2) | round(0) | int, 'y': y,
+              'size': marker_size, 'color': 'red', 'anchor': 'mm'
+            }] %}
+          {% endif %}
+          {% set ns.p = ns.p + [{
+            'type': 'text', 'value': a.name if a.name | length <= max_chars else a.name[:max_chars - 1] ~ '…',
+            'x': text_x, 'y': y, 'size': size, 'color': 'black', 'anchor': 'lm', 'font': text_font
+          }, {
+            'type': 'text', 'value': a.age, 'x': W - pad, 'y': y, 'size': size,
+            'color': 'black', 'anchor': 'rm', 'font': bold_font
+          }] %}
+        {% endfor %}
+        {% if overflow %}
+          {% set ns.p = ns.p + [{
+            'type': 'text', 'value': '+' ~ (alerts | count - shown) ~ ' more', 'x': pad,
+            'y': (body_top + (shown + 0.5) * row_h) | round(0) | int, 'size': size,
+            'color': 'red', 'anchor': 'lm', 'font': bold_font
+          }] %}
+        {% endif %}
+        {{ ns.p }}
+  - action: !input write_action
+    target:
+      device_id: !input display
+    data:
+      background: white
+      dry_run: !input dry_run
+      payload: "{{ payload }}"
+
+mode: restart
