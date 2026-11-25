@@ -16,12 +16,19 @@ Home Assistant blueprints by howels.
 | `blueprints/panda_esl_agenda.yaml` | Draws the coming events of calendars and the open items of to-do lists together on a PANDA ESL label, with a divider between the two lists. |
 | `blueprints/panda_esl_alerts.yaml` | Lists watched entities that are in a problem state, such as open doors and low batteries, on a PANDA ESL label. |
 | `blueprints/panda_esl_*.yaml` emoji | Icon style emoji draws OpenMoji PNGs through the `dlimg` element. The panel shows black, white, and red, so red parts stay red, outlines turn black, and yellow is drawn as red. The brown circle and square are drawn as a red and black checkerboard. `tools/panda_dither_png.py` generates those images. The default image URL points at jsDelivr; set the emoji image URL to a local folder to avoid the download. OpenMoji is licensed CC BY-SA 4.0. |
+| `examples/panda_esl.md` | Prerequisites, import URLs, layout, colours, and emoji handling for the PANDA ESL blueprints. |
 | `examples/occupancy_scene_store.yaml` | Template sensor that keeps the saved snapshots across restarts. |
 | `tests/` | pytest suite that runs the blueprint in a real Home Assistant core. |
 
 ## Pause automations on service restart
 
 `blueprints/pause_automations_on_service_restart.md` is the blueprint. `examples/mosquitto_broker.md` is the broker sensor this installation watches. `examples/ha_midi_restart.md` is the SSH command that restarts the bridge. The blueprint needs an `input_text` with maximum length 255 before the automation runs.
+
+## Install the PANDA ESL blueprints
+
+1. Install the PANDA ESL integration (`https://github.com/moryoav/ha-panda`) and add the label as a device.
+2. In Home Assistant, open Settings > Automations & scenes > Blueprints > Import blueprint. Enter `https://github.com/howels/home-assistant-blueprints/blob/main/blueprints/panda_esl_agenda.yaml`. Use another `panda_esl_*.yaml` file name for the weather, to-do, calendar, or alerts display.
+3. Create one automation per label. `examples/panda_esl.md` describes the layout, the colours, and the emoji images.
 
 ## Install room_occupancy
 
