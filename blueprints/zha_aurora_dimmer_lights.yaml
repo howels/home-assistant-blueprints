@@ -22,6 +22,15 @@ blueprint:
     range.
 
 
+    A dimmer that reports absolute levels (move_to_level_with_on_off) is also
+    supported. Rotating sets the brightness to the reported level, quantised by
+    the absolute level sensitivity and applied over the absolute level
+    transition. Pressing toggles the lights. Endpoint 2 controls the second
+    light selection when it is set. Any other endpoint controls the first.
+    Overlapping runs are not cancelled, so quick successive levels are sent in
+    the order they arrive.
+
+
     A triple click switches to the second mode, where a double click is also
     available. In the second mode the actions only write log messages. Adapt
     them as necessary.
@@ -114,6 +123,36 @@ blueprint:
           max: 4.0
           step: 0.25
           mode: slider
+    level_sensitivity:
+      name: Absolute level sensitivity
+      description: >-
+        Applies when the dimmer reports an absolute brightness level
+        (move_to_level_with_on_off) instead of steps. 3 sends every level the
+        dimmer reports. 2 rounds the level to the nearest 5 and 1 to the
+        nearest 15. Sensitivity 3 sends 255 distinct brightness levels, 2 sends
+        52 and 1 sends 18, so every setting keeps more than 10 steps across the
+        range.
+      default: 3
+      selector:
+        number:
+          min: 1.0
+          max: 3.0
+          step: 1.0
+          mode: slider
+    level_transition:
+      name: Absolute level transition
+      description: >-
+        Seconds the light takes to reach each absolute level. A short
+        transition smooths the steps at lower sensitivities. Set 0 for the
+        fastest response.
+      default: 0.2
+      selector:
+        number:
+          min: 0.0
+          max: 2.0
+          step: 0.1
+          mode: slider
+          unit_of_measurement: s
 mode: parallel
 max: 20
 max_exceeded: silent
@@ -129,6 +168,8 @@ variables:
   min_step_pct: !input min_step
   max_step_pct: !input max_step
   colour_gain: !input colour_sensitivity
+  level_sensitivity_input: !input level_sensitivity
+  level_transition_seconds: !input level_transition
   command: "{{ trigger.event.data.command }}"
   endpoint: "{{ trigger.event.data.endpoint_id }}"
   params: "{{ trigger.event.data.params | default({}) }}"
@@ -139,6 +180,13 @@ variables:
   step_size: "{{ params.get('step_size', 0) | float(0) }}"
   step_pct: "{{ [[step_size * brightness_gain, min_step_pct] | max, max_step_pct] | min * step_dir }}"
   args_value: "{{ trigger.event.data.args.value | default('') }}"
+  args_list: "{{ trigger.event.data.args if trigger.event.data.args is list else [] }}"
+  level: "{{ args_list[0] | int(0) if args_list | length > 0 else 0 }}"
+  level_press: "{{ args_list[1] | int(0) if args_list | length > 1 else 0 }}"
+  level_quantum: "{{ {1: 15, 2: 5}.get(level_sensitivity_input | int(3), 1) }}"
+  level_brightness: "{{ [[(level / level_quantum) | round(0) * level_quantum, 255] | min, 0] | max | int }}"
+  level_target: "{{ entity2 if endpoint == 2 and entity2 else entity1 }}"
+  has_level_target: "{{ level_target | length > 0 }}"
   light_target: "{{ entity1 if endpoint == 1 else entity2 if endpoint == 2 else {} }}"
   has_target: "{{ light_target | length > 0 }}"
   lead: >-
@@ -155,6 +203,17 @@ actions:
             target: "{{ light_target }}"
             data:
               transition: 0.25
+      - conditions: "{{ command == 'move_to_level_with_on_off' and level_press == 2 and has_level_target }}"
+        sequence:
+          - action: light.turn_on
+            target: "{{ level_target }}"
+            data:
+              brightness: "{{ level_brightness }}"
+              transition: "{{ level_transition_seconds }}"
+      - conditions: "{{ command == 'move_to_level_with_on_off' and level_press == 7 and has_level_target }}"
+        sequence:
+          - action: light.toggle
+            target: "{{ level_target }}"
       - conditions: "{{ command == 'step' and has_target }}"
         sequence:
           - action: light.turn_on
