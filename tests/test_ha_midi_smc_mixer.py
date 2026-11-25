@@ -5,6 +5,7 @@ registered with the identifier that ha-midi publishes, and the fader entities ar
 Services of lights and media players are replaced by recorders. Time is frozen and advanced with tick().
 """
 import asyncio
+import itertools
 import shutil
 from datetime import timedelta
 from pathlib import Path
@@ -70,8 +71,22 @@ class Env:
         return [o for o in out if notes is None or o[0] in notes]
 
 
+_COPIES = itertools.count()
+
+
+@pytest.fixture(autouse=True)
+def remove_mixer_copies(hass):
+    """Each setup copies the blueprint into its own folder. conftest.py removes only the shared howels folder."""
+    yield
+    for d in Path(hass.config.path("blueprints/automation")).glob("midi_smc_*"):
+        shutil.rmtree(d, ignore_errors=True)
+
+
 async def setup(hass, freezer, mqtt_mock, inputs=None, light_state=None, players=None):
-    d = Path(hass.config.path("blueprints/automation/howels"))
+    # A folder per setup. The shared howels folder is removed by conftest.py after every test, and a
+    # blueprint removed while an automation loads it produces "Unable to find" and a failed test.
+    folder = f"midi_smc_{next(_COPIES)}"
+    d = Path(hass.config.path(f"blueprints/automation/{folder}"))
     d.mkdir(parents=True, exist_ok=True)
     shutil.copy(BP, d)
 
@@ -120,7 +135,7 @@ async def setup(hass, freezer, mqtt_mock, inputs=None, light_state=None, players
         "strip_3_targets": ["media_player.cast"],
     }
     base.update(inputs or {})
-    cfg = {"automation": [{"id": "mixer", "alias": "mixer", "use_blueprint": {"path": "howels/ha_midi_smc_mixer.yaml", "input": base}}]}
+    cfg = {"automation": [{"id": "mixer", "alias": "mixer", "use_blueprint": {"path": f"{folder}/ha_midi_smc_mixer.yaml", "input": base}}]}
     assert await async_setup_component(hass, "automation", cfg)
     await env.pump()
     assert hass.states.get("automation.mixer").state == "on"
