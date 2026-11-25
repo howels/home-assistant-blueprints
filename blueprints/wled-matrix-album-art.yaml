@@ -68,33 +68,29 @@ blueprint:
     The blueprint limits sharpen and gamma to those ranges.
 
 
-    Recorded settings from the previous per-panel automations. One automation
-    can carry a whole group because the picture prefix is shared and each
+    Reference settings from earlier per-panel automations. One automation can
+    carry a whole panel group because the picture prefix is shared and each
     panel keeps its own numbers.
 
 
-    Matrices. Primary media_player.meraki_mx64, then
-    media_player.study_amplifier_4, then media_player.study_amplifier.
-    wled-hub75.example is 64 by 64, saturation 1.2, contrast 0.9, sharpen 0.5,
-    gamma 0.5. Turn on with the music is off. Turn off with the music is on.
-    The study player automation used contrast 1.4 and gamma 0.7 on that panel.
-    wled-matrix-portal-s3.example uses the same image settings and the same
-    light switches. wled-matrix-portal-s3-2.example is 128 by 128, saturation
-    1.2, contrast 1.1, sharpen 0.5, gamma 0.6, and both light switches are on.
-    nanopi-r3s.example is the same 128 by 128 image settings and is entered as a
+    Matrix group. One primary player and two fallback players. An indoor
+    HUB75 panel is 64 by 64, saturation 1.2, contrast 0.9, sharpen 0.5, gamma
+    0.5. Turn on with the music is off and turn off with the music is on.
+    Contrast 1.4 and gamma 0.7 suited the same panel under one of the
+    fallback players. An outdoor 64 by 64 matrix uses the same image settings
+    and the same light switches. An outdoor 128 by 128 matrix uses saturation
+    1.2, contrast 1.1, sharpen 0.5, gamma 0.6, and both light switches on. A
+    Colorlight receiver uses the same 128 by 128 settings. It is entered as a
     host, so it has no WLED lights to switch.
 
 
-    Pixoo in the living room. Primary media_player.living_room_audio_2, then
-    media_player.plex_plex_for_android_tv_bravia_vh2.
-    wled-pixoo64-2.example is 64 by 64, saturation 1.2, contrast 1.6, sharpen
-    0.5, gamma 1.2, keepalive 0. The Plex automation used contrast 1.1. Both
-    light switches are off.
+    Pixoo in a living room. One primary player and a TV fallback. 64 by 64,
+    saturation 1.2, contrast 1.6, sharpen 0.5, gamma 1.2, keepalive 0, both
+    light switches off. The TV fallback used contrast 1.1.
 
 
-    Pixoo in the kitchen. media_player.kitchen_audio_2 only.
-    wled-pixoo64-1.example is 64 by 64, saturation 1.3, contrast 1.4, sharpen
-    0.2, gamma 1.2, keepalive 0. Both light switches are on.
+    Pixoo in a kitchen. One player. 64 by 64, saturation 1.3, contrast 1.4,
+    sharpen 0.2, gamma 1.2, keepalive 0, both light switches on.
   input:
     player_section:
       name: Players
