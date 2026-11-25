@@ -12,7 +12,7 @@ from homeassistant.components.todo import TodoItem, TodoItemStatus, TodoListEnti
 from homeassistant.setup import async_setup_component
 from homeassistant.util import dt as dt_util
 
-from panda_helpers import add_automation, icons, in_canvas, install, register_write, run, texts
+from panda_helpers import add_automation, icons, images, in_canvas, install, register_write, run, texts
 
 
 @pytest.fixture(autouse=True)
@@ -101,4 +101,42 @@ async def test_calendar_with_real_entities(hass):
     ]
     assert {"Now", "Tomorrow"} <= set(t)
     assert icons(data) == ["calendar-month"]
+    in_canvas(data, 360, 240)
+
+
+async def test_agenda_with_real_entities(hass):
+    now = dt_util.now()
+    today = now.date()
+    work = FakeCalendar(
+        "Work",
+        [
+            CalendarEvent(start=now + timedelta(hours=2), end=now + timedelta(hours=3), summary="Stand-up"),
+            CalendarEvent(start=(today + timedelta(days=1)), end=(today + timedelta(days=2)), summary="Bin day"),
+        ],
+    )
+    tasks = FakeTodo(
+        [
+            TodoItem(summary="Black \u26ab bin", uid="1", status=TodoItemStatus.NEEDS_ACTION, due=today + timedelta(days=1)),
+            TodoItem(summary="Brown \U0001F7E4 bin", uid="2", status=TodoItemStatus.NEEDS_ACTION, due=today + timedelta(days=1)),
+            TodoItem(summary="Pay bill", uid="3", status=TodoItemStatus.NEEDS_ACTION, due=today - timedelta(days=3)),
+            TodoItem(summary="Done already", uid="4", status=TodoItemStatus.COMPLETED),
+        ]
+    )
+    assert await async_setup_component(hass, "calendar", {})
+    assert await async_setup_component(hass, "todo", {})
+    await hass.data[calendar.DATA_COMPONENT].async_add_entities([work])
+    await hass.data[todo.DATA_COMPONENT].async_add_entities([tasks])
+    install(hass, "panda_esl_agenda.yaml")
+    calls = register_write(hass)
+    await add_automation(
+        hass,
+        "panda_esl_agenda.yaml",
+        {"calendars": [work.entity_id], "todo_entities": [tasks.entity_id], "icon_style": "emoji"},
+    )
+    _, data = await run(hass, calls)
+    t = texts(data)
+    assert [x for x in t if x in {"Stand-up", "Bin day", "Pay bill", "Black bin", "Brown bin", "Done already"}] == [
+        "Stand-up", "Bin day", "Pay bill", "Black bin", "Brown bin",
+    ]
+    assert images(data) == ["1F4C5", "26AB", "dither:disc:22"]
     in_canvas(data, 360, 240)

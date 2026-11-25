@@ -124,7 +124,7 @@ async def test_emoji_is_drawn_as_images_and_text_trimmed(hass):
     t = texts(data)
     assert "Black bin day" in t and "Brown bin day" in t
     assert t.count("Tomorrow") == 2
-    assert images(data) == ["26AB", "1F6AE", "1F7E4", "1F6AE"]
+    assert images(data) == ["26AB", "1F6AE", "dither:disc:22", "1F6AE"]
     in_canvas(data, 360, 240)
 
 
@@ -171,3 +171,35 @@ async def test_custom_emoji_url(hass):
     await add_automation(hass, "panda_esl_todo.yaml", {"todo_entity": TODO, "emoji_image_url": "/config/emoji/{code}.png"})
     _, data = await run(hass, calls)
     assert [e["url"] for e in visible(data) if e["type"] == "dlimg"] == ["/config/emoji/1F6AE.png"]
+
+
+async def test_brown_is_not_dithered_when_switched_off(hass):
+    install(hass, "panda_esl_todo.yaml")
+    calls = register_write(hass)
+
+    async def get_items(call):
+        return {TODO: {"items": [{"summary": "Brown \U0001F7E4 \U0001F7EB bin", "uid": "1", "status": "needs_action"}]}}
+
+    hass.services.async_register("todo", "get_items", get_items, supports_response=SupportsResponse.ONLY)
+    hass.states.async_set(TODO, "1", {"friendly_name": "My tasks"})
+    await add_automation(hass, "panda_esl_todo.yaml", {"todo_entity": TODO, "dither_brown": False})
+    _, data = await run(hass, calls)
+    assert images(data) == ["1F7E4", "1F7EB"]
+
+
+@pytest.mark.parametrize("size,h,n", [("256x128", 128, 12), ("296x152", 152, 14), ("360x240", 240, 22), ("400x300", 300, 28)])
+async def test_brown_dither_matches_the_emoji_size(hass, size, h, n):
+    install(hass, "panda_esl_todo.yaml")
+    calls = register_write(hass)
+
+    async def get_items(call):
+        return {TODO: {"items": [{"summary": "Brown \U0001F7E4 \U0001F7EB bin", "uid": "1", "status": "needs_action"}]}}
+
+    hass.services.async_register("todo", "get_items", get_items, supports_response=SupportsResponse.ONLY)
+    hass.states.async_set(TODO, "1", {"friendly_name": "My tasks"})
+    await add_automation(hass, "panda_esl_todo.yaml", {"todo_entity": TODO, "display_size": size})
+    _, data = await run(hass, calls)
+    assert images(data) == [f"dither:disc:{n}", f"dither:square:{n}"]
+    for e in visible(data):
+        if e["type"] == "dlimg":
+            assert e["xsize"] == e["ysize"] == n

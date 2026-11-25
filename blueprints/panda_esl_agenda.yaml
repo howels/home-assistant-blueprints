@@ -1,0 +1,529 @@
+blueprint:
+  name: PANDA ESL agenda (calendar and to-do)
+  author: howels
+  domain: automation
+  source_url: https://github.com/howels/home-assistant-blueprints/blob/main/blueprints/panda_esl_agenda.yaml
+  description: >-
+    Draws the coming calendar events and the open to-do items together on a
+    PANDA / ETAG Bluetooth e-paper label. Requires the PANDA ESL integration
+    (https://github.com/moryoav/ha-panda).
+
+
+    calendar.get_events is called once for all selected calendars, from now
+    until the end of the last day selected. todo.get_items is called once for
+    all selected to-do entities and returns the items with status needs_action.
+    The events come first, sorted by start time, then a divider line, then the
+    open items, sorted by due date. Items with no due date follow the dated
+    items. The rows are shared between the two lists. Each list keeps at least
+    half of the rows when both are long, and a short list leaves its unused
+    rows to the other. When more entries exist than rows fit, the last row
+    reads "+N more".
+
+
+    An event row has a time column and the summary. The time column shows the
+    time for events today, Tom and the time for tomorrow, and the weekday and
+    time for later days. All-day events show Today, Tomorrow, or the weekday.
+    An event in progress shows Now. Events that start today are drawn in red.
+    An item row has a checkbox, the summary, and the due date. A due date in
+    the past is drawn in red with its date. Today and Tomorrow are written out.
+
+
+    The automation runs at Home Assistant start, when a calendar or to-do
+    entity changes state, and on the selected interval. A calendar entity
+    changes state when an event starts or ends. The state of a to-do entity is
+    its count of open items, so editing an item without changing the count is
+    shown at the next interval. A state change starts a wait of the settle time,
+    so a burst of edits is written once. The label is not written when both
+    services fail. The write action and the dry run input behave as in the
+    PANDA ESL weather display blueprint.
+
+
+    Icon style emoji draws OpenMoji pictures for the header glyph and the
+    markers. Emoji in the text are drawn the same way, up to three before each
+    row. Each picture is a PNG that the integration downloads from the emoji
+    image URL at every write, through the dlimg element. The renderer reduces
+    the label to black, white, and red, so the red parts of a colour emoji stay
+    red, the outlines turn black, and light fills turn white. Yellow is not
+    available on this hardware and is drawn as red. Replace color with black in
+    the URL for an all-black set. Copy the OpenMoji PNG folder to the Home
+    Assistant host, or serve it from config/www, to avoid the download. Put
+    {code} in the URL where the upper-case hexadecimal code point belongs.
+    OpenMoji is licensed CC BY-SA 4.0. The brown circle and square are drawn
+    as a checkerboard of red and black pixels, which reads as dark red on the
+    label. The text font has no emoji glyphs, so the text is drawn with its
+    emoji removed.
+  input:
+    display_section:
+      name: Display
+      icon: mdi:tag-text
+      collapsed: false
+      input:
+        display:
+          name: PANDA ESL label
+          description: Label that receives the image.
+          selector:
+            device:
+              integration: panda_esl
+        display_size:
+          name: Resolution
+          description: >-
+            Resolution of the label. ETAG-525 is 256 by 128, ETAG-526 is 296 by
+            152, ETAG-530 is 360 by 240, and ETAG-534 is 400 by 300.
+          default: 360x240
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: 256 x 128 (ETAG-525, 2.13 inch)
+                  value: 256x128
+                - label: 296 x 152 (ETAG-526, 2.66 inch)
+                  value: 296x152
+                - label: 360 x 240 (ETAG-530, 3.5 inch)
+                  value: 360x240
+                - label: 400 x 300 (ETAG-534, 4.2 inch)
+                  value: 400x300
+        write_action:
+          name: Write action
+          description: >-
+            panda_esl.write_guarded applies the duplicate prevention, write
+            lock, and debounce options of the integration. panda_esl.write
+            always sends.
+          default: panda_esl.write_guarded
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: Guarded write
+                  value: panda_esl.write_guarded
+                - label: Write
+                  value: panda_esl.write
+        dry_run:
+          name: Dry run
+          description: >-
+            Renders to the Preview content image entity and does not send
+            Bluetooth packets.
+          default: false
+          selector:
+            boolean: {}
+    sources_section:
+      name: Calendars and to-do lists
+      icon: mdi:calendar-check
+      collapsed: false
+      input:
+        calendars:
+          name: Calendars
+          description: Calendars whose events are drawn.
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: calendar
+        todo_entities:
+          name: To-do lists
+          description: To-do lists whose open items are drawn.
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: todo
+        title:
+          name: Title
+          description: Header text.
+          default: Agenda
+          selector:
+            text: {}
+        days_ahead:
+          name: Days ahead
+          description: >-
+            Days after today to include events from. 0 draws today only.
+          default: 3
+          selector:
+            number:
+              min: 0
+              max: 14
+              step: 1
+              mode: box
+        max_items:
+          name: Maximum rows
+          description: >-
+            Upper limit on the rows of events and items together. The
+            resolution also limits the rows. The 3.5 inch label fits 7 rows
+            including the "+N more" row.
+          default: 8
+          selector:
+            number:
+              min: 1
+              max: 12
+              step: 1
+              mode: box
+        update_minutes:
+          name: Update interval
+          description: >-
+            How often the label is refreshed, in addition to every event start
+            and end and every change in the number of open items. Each refresh
+            redraws the e-paper panel.
+          default: "0"
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: Every hour
+                  value: "0"
+                - label: Every 30 minutes
+                  value: /30
+        settle_seconds:
+          name: Settle time
+          description: >-
+            Wait after a change before the write. A further change in that time
+            restarts the wait.
+          default: 60
+          selector:
+            number:
+              min: 0
+              max: 600
+              step: 5
+              unit_of_measurement: s
+              mode: box
+    style_section:
+      name: Style
+      icon: mdi:palette
+      collapsed: true
+      input:
+        icon_style:
+          name: Icon style
+          description: >-
+            mdi draws a bundled Material Design Icon in the header. emoji draws
+            an OpenMoji picture.
+          default: mdi
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: Material Design Icons
+                  value: mdi
+                - label: Emoji
+                  value: emoji
+        emoji_image_url:
+          name: Emoji image URL
+          description: >-
+            Address of one emoji PNG. {code} is replaced with the upper-case
+            hexadecimal code point, for example 2600 for the sun. A file path
+            works in the same form.
+          default: https://cdn.jsdelivr.net/gh/hfg-gmuend/openmoji@15.1.0/color/72x72/{code}.png
+          selector:
+            text: {}
+        emoji_mode:
+          name: Emoji in text
+          description: >-
+            image draws up to three emoji from each row as pictures before the
+            text. strip draws the text only. The emoji image URL must be
+            reachable in image mode, or the write fails.
+          default: image
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: Pictures
+                  value: image
+                - label: Strip
+                  value: strip
+        dither_brown:
+          name: Dither brown emoji
+          description: >-
+            Draws the brown circle and the brown square as a checkerboard of
+            red and black pixels with a black outline, which reads as dark red.
+            Other emoji use the pictures from the emoji image URL.
+          default: true
+          selector:
+            boolean: {}
+        text_font:
+          name: Text font
+          description: Regular weight font for the summaries.
+          default: fonts/NotoSansKR-Regular.ttf
+          selector:
+            text: {}
+        bold_font:
+          name: Bold font
+          description: Bold weight font for the header, the time column, and the due dates.
+          default: fonts/NotoSansKR-Bold.ttf
+          selector:
+            text: {}
+
+variables:
+  emoji_mode: !input emoji_mode
+  emoji_image_url: !input emoji_image_url
+  dither_brown: !input dither_brown
+  dither_shapes:
+    "1F7E4": disc
+    "1F7EB": square
+  dither_png:
+    disc:
+      "10": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKAgMAAADwXCcuAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAADFJREFUeNpjYAxhYGIVZGARNrnNHPX8L8tnh+8svGdfsXx2+M78iv8oA+tMBub/7NcA8scON9V4+dMAAAAASUVORK5CYII="
+      "12": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAwAAAAMAgMAAAArG7R0AAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAADlJREFUeNpjYAhlYGa1lGURMf7NzMX/nMXZmIGF9+x/ls8ODCy8Z/8zP4sSZebif8703vgNA0MoAwAUZg0oEX+KYwAAAABJRU5ErkJggg=="
+      "14": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAAOAgMAAABiJsVCAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAEpJREFUeNpjYBB1YGBhDHzHwMRi7MrALML/nJeF2ZjhFmMaA8Mrls8ODN9ZeM/CWHt5GW6xMBsz3GJ5e/b/Aabfn/UZmBlevnkAAGWfFstck5lTAAAAAElFTkSuQmCC"
+      "16": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQAgMAAABinRfyAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAE9JREFUeNpjYGANYGBhCORnYGF0ZrjNzCb+/C+LsDHDb5a/Zxn+sTgbMzCw8J5l+M/y2QHKYpRsgMm+N2b4zvLnLMMtpv+f9Q8wM9xkvgEAdAwbHCCrK7AAAAAASUVORK5CYII="
+      "18": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABIAAAASAgMAAAAroGbEAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAGFJREFUeNpFyrsJgDAUQNEb8ywDgr1LZAHBFYIjOJRTuIAjpJe4gQgpLCz8xELB7hQHlANNW1STqIZjkNyTkNLCLJcHRFsIqgMW2WrYxfjfo4Hwnu9HC72cnpssRbsCysEDu8Idch7sRAIAAAAASUVORK5CYII="
+      "20": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUAgMAAADw5/WeAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAGdJREFUeNpFyrENwjAURdFr+7UpXFBkhbS/okMKbED2yTaUrJAF/hyWkBAFpYVNgRS6UxxggcghX4mc7UIKx1IGyWBSdmhKBlUfh6bZAA0OXe/T7jCu//P7T4eHqsFN3elb5G4vgAW+P8UfJ+jaO9UAAAAASUVORK5CYII="
+      "22": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABYAAAAWAgMAAAC52oSoAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAHNJREFUeNpNzLEJwlAYAOEv5E8ZENRJ3gJZQbBxgWxkIw7hAhnhLRAbW2ORwsIiaGwMWB7cHbYNodqNhH0yXaKos42IhHMUmVmsE67xzhBlQl+0MMSzwSvq/E9djf5nLt2YcFqeU2ISc7cyoDocKX3uj5svhD4klnm9eBUAAAAASUVORK5CYII="
+      "24": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYAgMAAACdGdVrAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAHtJREFUeNpNzrsJwmAYRuEn5ksZUbFxihRZQHABxYWcw10EF/gX0MbaW5PCwkssopDywHteDooluWw9GZ7CdKHah1XSiqzGMYqEUbQ1HjFO+ERe4xnvjhY1RJnQRjPvUTbb9Jc/75Zw/n++Eg7RNnO2YVe6G7g01ZUu8Aszqyl4kvQWswAAAABJRU5ErkJggg=="
+      "26": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABoAAAAaAgMAAADUJKRdAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAINJREFUeNp1z6ENwlAYReGv8CObgERisW+BJh2BwDwMgsdAUodlgWcRjNCEICoQDRQDOOQV55xcTNYYK1azxUWImoPCZkrbRFGjb0LGS0SCXcwyVDFOcI1nBlEnWEaZoY2ugse/Xcy3sP/xX98tYzhHn9D79Yeu4iQcS0NjpO/SHZ8fb8+LLAlaVujEAAAAAElFTkSuQmCC"
+      "28": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAcAgMAAAAPYzcHAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAIpJREFUeNp9zTFqAlEABuFvs3/KBSWSQ6RJ8S4geAav4Dk8iL2NxYJ1IBd4d0htAhYWKR66KQJCmpRTzExPt37+ENYzxOOKNsa8shCrgl26oWKZFHhJV+GUpwIt1wq39L/cbcCUyxJkqP/z2/DHv/fOBb7vv1Zgn6lieo/jlia+KicP2rm8jsLBJz+Uri+HmR5l0QAAAABJRU5ErkJggg=="
+      "30": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAB4AAAAeAgMAAABGXkYxAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAKNJREFUeNp9zSFOA0EYgNG33b8CsQkNqeACCEzFXGATapG9D+eAAyBBYkj2AuOb9gaEtqIJFS0MYhLqsE98X4vFzZIR08m0JzTzZDYI4y4rhKuE9RDuMy5Fk+D4GuMMRZQEnmKSQR9tlVV8VxF3VW6jq/IR+x4c/pHm+gE8nzt/5U29D+f7KcOPKPseB+G9w0rYJTwKp8yWkfKSZp+0fF2s3/gFcyU3OPKFmRwAAAAASUVORK5CYII="
+      "32": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgAgMAAAAOFJJnAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAJ5JREFUeNqFzqENwlAUheG/9DTBNCGBShgA+wSWBXA1LMBQLICkDtUR6pswQFMQFRWIB32I26QJBvsl/7kXIMuBGJLjfFMjyB3vgphk1zTtuhYrB/hCHCogoMgBcBcVAEgmW0UmDy1NvD4mg+JRopNFQf1+zNPqv5Tpz8603Jm8puve5DJ9GGzoLMoUGBCdA24IXy4IBTO49u5pQZYDX9K5N32Ui9DuAAAAAElFTkSuQmCC"
+      "34": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACIAAAAiAgMAAABHKeNRAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAALZJREFUeNp90CFOxFAUBdBT+kY2ZJIaJHZsN9CkKyBk9jP7YAFjcGiSbqAWAQbXZGCCqBhR4CN+EwaDuznivpsHqy2UFLfr6yeCuuO9F4qbgZoQDdwr1ZfjOI7Va+ga2PRRVAN8Cw2YxWoASaRs7mKdTRvlYs/xtZjoFttEtdghpjan0/9WXO1y2p/1/d44Llv6sy2f2f5sTtkOwsMO9sJxQOqFeWqZCemxkl644G1qPvpcmj/5A7MYQXY3aBu8AAAAAElFTkSuQmCC"
+      "36": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACQAAAAkAgMAAACcbnALAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAK5JREFUeNqNz7FNw1AUBdDz45fSEpairEHhBSxlAgqvAGswB2IIJOpILPAXgCZ1EqBIQWHgU/gXkWjSXZ3i3vcapHG9oyGN3WK9E6w2TC+Cm0whLHs4PIUuw0rY9OAxtBmKSDN5i2We01WUal/RVfuNptoUP/8t3c5BidNQY7T5Mtu2F23Ee7X92X3f1V6j1MKHs98838MkHDPshek04E6wbflgweGzvz7OVWkc8AfycUDDtCTBewAAAABJRU5ErkJggg=="
+    square:
+      "10": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKAgMAAADwXCcuAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAB5JREFUeNpjDGX4zSQoyMDy2eE7C+/ZV1jpP3t+AwA2nhI9jHsrwAAAAABJRU5ErkJggg=="
+      "12": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAwAAAAMAgMAAAArG7R0AAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAABxJREFUeNpjDGVgYBFk+M/y2YGBhfcsfvrPHgYAa8EQrltfIwIAAAAASUVORK5CYII="
+      "14": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAAOAgMAAABiJsVCAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAACFJREFUeNpjDGVg+M0iyMDwiuWzA8N3Ft6zpLL+7GH4DQBjoBsEuz9HpwAAAABJRU5ErkJggg=="
+      "16": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQAgMAAABinRfyAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAACBJREFUeNpjDGVgYGARZGD4z/LZgYGBhfcs+aw/exgYAFVwFtZFPPcaAAAAAElFTkSuQmCC"
+      "18": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABIAAAASAgMAAAAroGbEAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAACVJREFUeNpjDGVgYPjNIsjAwPCK5bMDA8N3Ft6z1Gf/2cPA8BsA5M0i8CcblyIAAAAASUVORK5CYII="
+      "20": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUAgMAAADw5/WeAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAACVJREFUeNpjDGVgYGBgEWRgYPjP8tmBgYGBhfcsbdl/9jAwMAAAcuYc/m9ZHyYAAAAASUVORK5CYII="
+      "22": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABYAAAAWAgMAAAC52oSoAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAClJREFUeNpjDGVgYGD4zSLIwMDA8IrlswMDA8N3Ft6zA8n7s4eBgeE3ADWDKtyuBSPsAAAAAElFTkSuQmCC"
+      "24": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYAgMAAACdGdVrAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAClJREFUeNpjDGVgYGBgYBFkYGBg+M/y2YGBgYGBhffs4OH92cPAwMAAAA4SIyYhafahAAAAAElFTkSuQmCC"
+      "26": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABoAAAAaAgMAAADUJKRdAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAC1JREFUeNpjDGVgYGBg+M0iyMDAwMDwiuWzAwMDA8N3Ft6zQ4v/Zw8DAwPDbwC0tDLISyIefwAAAABJRU5ErkJggg=="
+      "28": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAcAgMAAAAPYzcHAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAClJREFUeNpjDGVgYGBgYGARZGBgYGD4z/LZAcLnPTu0+X/2MDAwMDAAAHDFKU79oGnBAAAAAElFTkSuQmCC"
+      "30": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAB4AAAAeAgMAAABGXkYxAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAClJREFUeNpjDGVgYGBgYPjNIghhvGL57MDAwMDA8J2F9+xIEfmzBxIIAMGOOrQ7S1E7AAAAAElFTkSuQmCC"
+      "32": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgAgMAAAAOFJJnAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAAB9JREFUeNpjDGWAABZBCP2f5bMDVIT37MgV+bMHwgAA5O4vdiXltasAAAAASUVORK5CYII="
+      "34": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACIAAAAiAgMAAABHKeNRAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAACRJREFUeNpjDGWAgN8sglDWK5bPDhDWdxbes6NixIr92QMNSQC7IUKg+KbF7gAAAABJRU5ErkJggg=="
+      "36": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACQAAAAkAgMAAACcbnALAAAACVBMVEX///8AAAD/AADAyZ2wAAAAAXRSTlMAQObYZgAAACBJREFUeNpjDGWAAhZBKOM/y2cHmBjv2VExSsT+7IGyALR8NZ6Dnc34AAAAAElFTkSuQmCC"
+  supported_emoji: "[\u231A-\u231B\u23E9-\u23F3\u23F8-\u23FA\u2600-\u2605\u260E\u2611\u2614-\u2615\u2618\u261D\u2620\u2622-\u2623\u2626\u262A\u262E-\u262F\u2638-\u263A\u2640\u2642\u2648-\u2653\u265F-\u2660\u2663\u2665-\u2666\u2668\u267B\u267E-\u267F\u2692-\u2697\u2699\u269B-\u269C\u26A0-\u26A1\u26A7\u26AA-\u26AB\u26B0-\u26B1\u26BD-\u26BE\u26C4-\u26C5\u26C8\u26CE-\u26CF\u26D1\u26D3-\u26D4\u26E9-\u26EA\u26F0-\u26F5\u26F7-\u26FA\u26FD\u2702\u2705\u2708-\u270D\u270F\u2712\u2714\u2716\u271D\u2721\u2728\u2733-\u2734\u2744\u2747\u274C\u274E\u2753-\u2755\u2757\u2763-\u2764\u2795-\u2797\u27A1\u27B0\u27BF\u2B05-\u2B07\u2B1B-\u2B1C\u2B50\u2B55\U0001F004\U0001F0CF\U0001F10D-\U0001F10F\U0001F12F\U0001F16D-\U0001F171\U0001F17E-\U0001F17F\U0001F18E\U0001F191-\U0001F19A\U0001F201-\U0001F202\U0001F21A\U0001F22F\U0001F232-\U0001F23A\U0001F250-\U0001F251\U0001F260-\U0001F265\U0001F300-\U0001F321\U0001F324-\U0001F393\U0001F396-\U0001F397\U0001F399-\U0001F39B\U0001F39E-\U0001F3F0\U0001F3F3-\U0001F3F5\U0001F3F7-\U0001F3FA\U0001F400-\U0001F4FD\U0001F4FF-\U0001F53D\U0001F549-\U0001F54E\U0001F550-\U0001F567\U0001F56F-\U0001F570\U0001F573-\U0001F57A\U0001F587\U0001F58A-\U0001F58D\U0001F590\U0001F595-\U0001F596\U0001F5A4-\U0001F5A5\U0001F5A8\U0001F5B1-\U0001F5B2\U0001F5BC\U0001F5C2-\U0001F5C4\U0001F5D1-\U0001F5D3\U0001F5DC-\U0001F5DE\U0001F5E1\U0001F5E3\U0001F5E8\U0001F5EF\U0001F5F3\U0001F5FA-\U0001F64F\U0001F680-\U0001F6C5\U0001F6CB-\U0001F6D2\U0001F6D5-\U0001F6D7\U0001F6DC-\U0001F6E5\U0001F6E9\U0001F6EB-\U0001F6EC\U0001F6F0\U0001F6F3-\U0001F6FC\U0001F7E0-\U0001F7EB\U0001F7F0\U0001F90C-\U0001F93A\U0001F93C-\U0001F945\U0001F947-\U0001F9FF\U0001FA70-\U0001FA7C\U0001FA80-\U0001FA88\U0001FA90-\U0001FABD\U0001FABF-\U0001FAC5\U0001FACE-\U0001FADB\U0001FAE0-\U0001FAE8\U0001FAF0-\U0001FAF8]"
+  strip_pattern: "[\u2600-\u27BF\u2B00-\u2BFF\U0001F000-\U0001FAFF\uFE0F\u200D\u20E3]"
+  calendars: !input calendars
+  todo_entities: !input todo_entities
+  title: !input title
+  days_ahead: !input days_ahead
+  display_size: !input display_size
+  max_items: !input max_items
+  icon_style: !input icon_style
+  use_emoji: "{{ icon_style == 'emoji' }}"
+  text_font: !input text_font
+  bold_font: !input bold_font
+
+triggers:
+  - trigger: homeassistant
+    event: start
+  - trigger: state
+    entity_id: !input calendars
+    id: change
+  - trigger: state
+    entity_id: !input todo_entities
+    id: change
+  - trigger: time_pattern
+    minutes: !input update_minutes
+
+actions:
+  - if:
+      - condition: trigger
+        id: change
+    then:
+      - delay:
+          seconds: !input settle_seconds
+  - action: calendar.get_events
+    target:
+      entity_id: !input calendars
+    data:
+      start_date_time: "{{ now().isoformat() }}"
+      end_date_time: "{{ (today_at() + timedelta(days=(days_ahead | int) + 1)).isoformat() }}"
+    response_variable: calendar_response
+    continue_on_error: true
+  - action: todo.get_items
+    target:
+      entity_id: !input todo_entities
+    data:
+      status: needs_action
+    response_variable: todo_response
+    continue_on_error: true
+  - condition: template
+    value_template: "{{ calendar_response is defined or todo_response is defined }}"
+  - variables:
+      W: "{{ display_size.split('x')[0] | int }}"
+      H: "{{ display_size.split('x')[1] | int }}"
+      events: >-
+        {% set ns = namespace(rows=[]) %}
+        {% for entity, body in (calendar_response | default({}, true)).items() %}
+          {% for e in (body or {}).get('events') or [] %}
+            {% set all_day = (e.start | string) | length == 10 %}
+            {% set s = as_local(as_datetime(e.start ~ ' 00:00:00' if all_day else e.start)) %}
+            {% set days = [(s.date() - now().date()).days, 0] | max %}
+            {% if all_day %}
+              {% set label = 'Today' if days == 0 else ('Tomorrow' if days == 1 else s.strftime('%a')) %}
+            {% elif s <= now() %}
+              {% set label = 'Now' %}
+            {% elif days == 0 %}
+              {% set label = s.strftime('%H:%M') %}
+            {% elif days == 1 %}
+              {% set label = 'Tom ' ~ s.strftime('%H:%M') %}
+            {% else %}
+              {% set label = s.strftime('%a %H:%M') %}
+            {% endif %}
+            {% set raw = e.get('summary') or '' %}
+            {% set ns.rows = ns.rows + [{
+              'ts': as_timestamp(s), 'lead': label, 'lead_red': days == 0, 'trail': '', 'trail_red': false,
+              'task': false, 'raw': raw,
+              'summary': (raw | regex_replace(strip_pattern, '') | regex_replace('\\s{2,}', ' ')) | trim
+            }] %}
+          {% endfor %}
+        {% endfor %}
+        {{ ns.rows | sort(attribute='ts') }}
+      tasks: >-
+        {% set ns = namespace(rows=[]) %}
+        {% for entity, body in (todo_response | default({}, true)).items() %}
+          {% for it in (body or {}).get('items') or [] %}
+            {% set due = as_datetime(it.get('due')) if it.get('due') else none %}
+            {% set days = (as_local(due).date() - now().date()).days if due is not none else none %}
+            {% if days is none %}
+              {% set due_text = '' %}
+            {% elif days == 0 %}
+              {% set due_text = 'Today' %}
+            {% elif days == 1 %}
+              {% set due_text = 'Tomorrow' %}
+            {% else %}
+              {% set due_text = as_local(due).strftime('%a %d %b') if days < 0 or days > 6 else as_local(due).strftime('%a') %}
+            {% endif %}
+            {% set raw = it.get('summary') or '' %}
+            {% set ns.rows = ns.rows + [{
+              'ts': as_timestamp(due) if due is not none else 4102444800, 'lead': '', 'lead_red': false,
+              'trail': due_text, 'trail_red': days is not none and days < 0,
+              'task': true, 'raw': raw,
+              'summary': (raw | regex_replace(strip_pattern, '') | regex_replace('\\s{2,}', ' ')) | trim
+            }] %}
+          {% endfor %}
+        {% endfor %}
+        {{ ns.rows | sort(attribute='ts') }}
+      pad: "{{ (W * 0.03) | round(0) | int }}"
+      header_h: "{{ (H * 0.13) | round(0) | int }}"
+      header_size: "{{ (header_h * 0.62) | round(0) | int }}"
+      glyph_size: "{{ (header_h * 0.74) | round(0) | int }}"
+      row_h: "{{ (H * 0.12) | round(0) | int }}"
+      size: "{{ (row_h * 0.66) | round(0) | int }}"
+      box: "{{ (row_h * 0.50) | round(0) | int }}"
+      emoji_size: "{{ [[((row_h * 0.8) | round(0) | int) // 2 * 2, 10] | max, 36] | min }}"
+      body_top: "{{ header_h + 3 }}"
+      fit: "{{ ((H - body_top) / row_h) | int }}"
+      rows: "{{ [fit, max_items | int] | min }}"
+      total: "{{ events | count + tasks | count }}"
+      overflow: "{{ total > rows }}"
+      shown: "{{ rows - 1 if overflow else rows }}"
+      ev_show: "{{ [events | count, [shown - (tasks | count), (shown + 1) // 2] | max] | min }}"
+      tk_show: "{{ [tasks | count, shown - ev_show] | min }}"
+      chosen: "{{ events[:ev_show] + tasks[:tk_show] }}"
+      label_chars: >-
+        {{ [events[:ev_show] | map(attribute='lead') | map('length') | max, 4] | max if ev_show > 0 else 4 }}
+      lead_w: >-
+        {{ [((label_chars + 1) * 0.62 * size) if ev_show > 0 else 0, (box + pad) if tk_show > 0 else 0] | max | round(0) | int }}
+      text_x: "{{ pad + lead_w }}"
+      date_text: "{{ now().strftime('%a %d %b') }}"
+      payload: >-
+        {% set ns = namespace(p=[]) %}
+        {% set ns.p = ns.p + [{
+          'type': 'rectangle', 'x_start': 0, 'y_start': 0, 'x_end': W - 1, 'y_end': header_h,
+          'fill': 'black', 'outline': 'black'
+        }] %}
+        {% if use_emoji %}
+          {% set gy = ((header_h - glyph_size) / 2) | round(0) | int %}
+          {% set ns.p = ns.p + [{
+            'type': 'rectangle', 'x_start': pad, 'y_start': gy, 'x_end': pad + glyph_size,
+            'y_end': gy + glyph_size, 'fill': 'white', 'outline': 'white'
+          }, {
+            'type': 'dlimg', 'url': emoji_image_url.replace('{code}', '1F4C5'), 'x': pad, 'y': gy,
+            'xsize': glyph_size, 'ysize': glyph_size
+          }] %}
+        {% else %}
+          {% set ns.p = ns.p + [{
+            'type': 'icon', 'value': 'calendar-check', 'x': pad + (glyph_size / 2) | round(0) | int,
+            'y': (header_h / 2) | round(0) | int, 'size': glyph_size, 'color': 'white', 'anchor': 'mm'
+          }] %}
+        {% endif %}
+        {% set title_max = ((W - 2 * pad - glyph_size - ((date_text | length) + 2) * 0.55 * header_size) / (0.6 * header_size)) | int %}
+        {% set ns.p = ns.p + [{
+          'type': 'text', 'value': title if title | length <= title_max else title[:title_max - 1] ~ '…',
+          'x': pad + glyph_size + pad, 'y': (header_h / 2) | round(0) | int, 'size': header_size,
+          'color': 'white', 'anchor': 'lm', 'font': bold_font
+        }, {
+          'type': 'text', 'value': date_text, 'x': W - pad, 'y': (header_h / 2) | round(0) | int,
+          'size': header_size, 'color': 'white', 'anchor': 'rm', 'font': text_font
+        }] %}
+        {% if total == 0 %}
+          {% if use_emoji %}
+            {% set es = (H * 0.30) | round(0) | int %}
+            {% set ns.p = ns.p + [{
+              'type': 'dlimg', 'url': emoji_image_url.replace('{code}', '2705'), 'x': ((W - es) / 2) | round(0) | int,
+              'y': (header_h + (H - header_h) * 0.40 - es / 2) | round(0) | int,
+              'xsize': es, 'ysize': es
+            }] %}
+          {% else %}
+            {% set ns.p = ns.p + [{
+              'type': 'icon', 'value': 'check-circle-outline', 'x': (W / 2) | round(0) | int,
+              'y': (header_h + (H - header_h) * 0.40) | round(0) | int,
+              'size': (H * 0.30) | round(0) | int, 'color': 'black', 'anchor': 'mm'
+            }] %}
+          {% endif %}
+          {% set ns.p = ns.p + [{
+            'type': 'text', 'value': 'Nothing planned', 'x': (W / 2) | round(0) | int,
+            'y': (header_h + (H - header_h) * 0.80) | round(0) | int,
+            'size': (size * 1.2) | round(0) | int, 'color': 'black', 'anchor': 'mm', 'font': bold_font
+          }] %}
+        {% endif %}
+        {% if ev_show > 0 and tk_show > 0 %}
+          {% set ns.p = ns.p + [{
+            'type': 'line', 'x_start': pad, 'x_end': W - pad - 1,
+            'y_start': body_top + ev_show * row_h, 'y_end': body_top + ev_show * row_h,
+            'fill': 'black', 'width': 1
+          }] %}
+        {% endif %}
+        {% for r in chosen %}
+          {% set y = (body_top + (loop.index0 + 0.5) * row_h) | round(0) | int %}
+          {% set ems = (r.raw | regex_findall(supported_emoji))[:3] if emoji_mode == 'image' else [] %}
+          {% set tx = text_x + ems | count * (emoji_size + 3) %}
+          {% set trail_w = ((r.trail | length) + 1) * 0.5 * size if r.trail else 0 %}
+          {% set mc = ((W - tx - pad - trail_w) / (0.5 * size)) | int %}
+          {% if r.task %}
+            {% set ns.p = ns.p + [{
+              'type': 'rectangle', 'x_start': pad, 'y_start': y - (box / 2) | round(0) | int,
+              'x_end': pad + box, 'y_end': y + (box / 2) | round(0) | int,
+              'outline': 'black', 'fill': 'white', 'width': 2
+            }] %}
+          {% else %}
+            {% set ns.p = ns.p + [{
+              'type': 'text', 'value': r.lead, 'x': pad, 'y': y, 'size': size,
+              'color': 'red' if r.lead_red else 'black', 'anchor': 'lm', 'font': bold_font
+            }] %}
+          {% endif %}
+          {% set ns.p = ns.p + [{
+            'type': 'text', 'value': r.summary if r.summary | length <= mc else r.summary[:mc - 1] ~ '…',
+            'x': tx, 'y': y, 'size': size, 'color': 'black', 'anchor': 'lm', 'font': text_font
+          }] %}
+          {% if r.trail %}
+            {% set ns.p = ns.p + [{
+              'type': 'text', 'value': r.trail, 'x': W - pad, 'y': y, 'size': size,
+              'color': 'red' if r.trail_red else 'black', 'anchor': 'rm', 'font': bold_font
+            }] %}
+          {% endif %}
+          {% for ch in ems %}
+            {% set code = ch.encode('utf-32-be').hex() | upper | regex_replace('^0+', '') %}
+            {% set shape = dither_shapes.get(code) if dither_brown else none %}
+            {% set ns.p = ns.p + [{
+              'type': 'dlimg', 'url': dither_png[shape][emoji_size | string] if shape else emoji_image_url.replace('{code}', code),
+              'x': text_x + loop.index0 * (emoji_size + 3),
+              'y': y - (emoji_size / 2) | round(0) | int, 'xsize': emoji_size, 'ysize': emoji_size
+            }] %}
+          {% endfor %}
+        {% endfor %}
+        {% if overflow %}
+          {% set ns.p = ns.p + [{
+            'type': 'text', 'value': '+' ~ (total - ev_show - tk_show) ~ ' more', 'x': pad,
+            'y': (body_top + (shown + 0.5) * row_h) | round(0) | int, 'size': size,
+            'color': 'red', 'anchor': 'lm', 'font': bold_font
+          }] %}
+        {% endif %}
+        {{ ns.p }}
+  - action: !input write_action
+    target:
+      device_id: !input display
+    data:
+      background: white
+      dry_run: !input dry_run
+      payload: "{{ payload }}"
+
+mode: restart

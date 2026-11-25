@@ -13,8 +13,9 @@ Home Assistant blueprints by howels.
 | `blueprints/panda_esl_weather.yaml` | Draws current weather and a three day forecast on a PANDA / ETAG Bluetooth e-paper label through the PANDA ESL integration. Icon style is Material Design Icons or OpenMoji pictures. |
 | `blueprints/panda_esl_todo.yaml` | Draws the open items of a to-do entity, with due dates, on a PANDA ESL label. |
 | `blueprints/panda_esl_calendar.yaml` | Draws the coming events of one or more calendar entities, including Google Calendar, on a PANDA ESL label. |
+| `blueprints/panda_esl_agenda.yaml` | Draws the coming events of calendars and the open items of to-do lists together on a PANDA ESL label, with a divider between the two lists. |
 | `blueprints/panda_esl_alerts.yaml` | Lists watched entities that are in a problem state, such as open doors and low batteries, on a PANDA ESL label. |
-| `blueprints/panda_esl_*.yaml` emoji | Icon style emoji draws OpenMoji PNGs through the `dlimg` element. The panel shows black, white, and red, so red parts stay red, outlines turn black, and yellow is drawn as red. The default image URL points at jsDelivr; set the emoji image URL to a local folder to avoid the download. OpenMoji is licensed CC BY-SA 4.0. |
+| `blueprints/panda_esl_*.yaml` emoji | Icon style emoji draws OpenMoji PNGs through the `dlimg` element. The panel shows black, white, and red, so red parts stay red, outlines turn black, and yellow is drawn as red. The brown circle and square are drawn as a red and black checkerboard. `tools/panda_dither_png.py` generates those images. The default image URL points at jsDelivr; set the emoji image URL to a local folder to avoid the download. OpenMoji is licensed CC BY-SA 4.0. |
 | `examples/occupancy_scene_store.yaml` | Template sensor that keeps the saved snapshots across restarts. |
 | `tests/` | pytest suite that runs the blueprint in a real Home Assistant core. |
 

@@ -68,9 +68,31 @@ def icons(data):
     return [e["value"] for e in visible(data) if e["type"] == "icon"]
 
 
+def _dither_names():
+    import sys
+
+    sys.path.insert(0, str(BLUEPRINTS.parent / "tools"))
+    import panda_dither_png
+
+    return {
+        panda_dither_png.make(shape, n): f"dither:{shape}:{n}"
+        for shape in ("disc", "square")
+        for n in panda_dither_png.SIZES
+    }
+
+
+def image_name(url):
+    if url.startswith("data:"):
+        return _dither_names().get(url, "data:unknown")
+    return url.rsplit("/", 1)[-1].removesuffix(".png")
+
+
 def images(data):
-    """Codes (file stem) of the visible dlimg elements, in payload order."""
-    return [e["url"].rsplit("/", 1)[-1].removesuffix(".png") for e in visible(data) if e["type"] == "dlimg"]
+    """Codes (file stem) of the visible dlimg elements, in payload order.
+
+    A dithered brown substitute is named dither:<shape>:<size>.
+    """
+    return [image_name(e["url"]) for e in visible(data) if e["type"] == "dlimg"]
 
 
 def in_canvas(data, w, h):
