@@ -96,6 +96,14 @@ blueprint:
             entity:
               filter:
                 - domain: todo
+        strip_emoji:
+          name: Strip emoji
+          description: >-
+            Removes emoji and pictographs from item summaries. The text font has no
+            emoji glyphs, so each emoji would draw as an empty box.
+          default: true
+          selector:
+            boolean: {}
         title:
           name: Title
           description: Header text. Leave empty to use the name of the entity.
@@ -180,6 +188,8 @@ blueprint:
             text: {}
 
 variables:
+  strip_emoji: !input strip_emoji
+  emoji_pattern: "[\u2600-\u27BF\u2B00-\u2BFF\U0001F000-\U0001FAFF\uFE0F\u200D\u20E3]"
   todo_entity: !input todo_entity
   title_input: !input title
   display_size: !input display_size
@@ -305,7 +315,8 @@ actions:
           {% set text_x = pad + box + pad %}
           {% set due_w = ((due_text | length) + 1) * char_w if due_text else 0 %}
           {% set max_chars = ((W - text_x - pad - due_w) / char_w) | int %}
-          {% set summary = it.get('summary') or '' %}
+          {% set raw = it.get('summary') or '' %}
+          {% set summary = (raw | regex_replace(emoji_pattern, '') | regex_replace('\\s{2,}', ' ') if strip_emoji else raw) | trim %}
           {% set ns.p = ns.p + [{
             'type': 'rectangle', 'x_start': pad, 'y_start': y - (box / 2) | round(0) | int,
             'x_end': pad + box, 'y_end': y + (box / 2) | round(0) | int,

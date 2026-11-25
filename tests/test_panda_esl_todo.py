@@ -104,3 +104,36 @@ async def test_skipped_when_unavailable(hass):
     hass.states.async_set(TODO, "unavailable")
     await pump()
     assert calls == []
+
+
+async def test_emoji_is_stripped_and_text_trimmed(hass):
+    install(hass, "panda_esl_todo.yaml")
+    calls = register_write(hass)
+
+    async def get_items(call):
+        return {TODO: {"items": [
+            {"summary": "Black \u26ab\U0001F6AE bin day", "uid": "1", "status": "needs_action", "due": "2026-11-26"},
+            {"summary": "Brown \U0001F7E4\U0001F6AE bin day ", "uid": "2", "status": "needs_action", "due": "2026-11-26"},
+        ]}}
+
+    hass.services.async_register("todo", "get_items", get_items, supports_response=SupportsResponse.ONLY)
+    hass.states.async_set(TODO, "2", {"friendly_name": "My tasks"})
+    await add_automation(hass, "panda_esl_todo.yaml", {"todo_entity": TODO})
+    _, data = await run(hass, calls)
+    t = texts(data)
+    assert "Black bin day" in t and "Brown bin day" in t
+    assert t.count("Tomorrow") == 2
+
+
+async def test_emoji_kept_when_strip_is_off(hass):
+    install(hass, "panda_esl_todo.yaml")
+    calls = register_write(hass)
+
+    async def get_items(call):
+        return {TODO: {"items": [{"summary": "Bin \U0001F6AE day ", "uid": "1", "status": "needs_action"}]}}
+
+    hass.services.async_register("todo", "get_items", get_items, supports_response=SupportsResponse.ONLY)
+    hass.states.async_set(TODO, "1", {"friendly_name": "My tasks"})
+    await add_automation(hass, "panda_esl_todo.yaml", {"todo_entity": TODO, "strip_emoji": False})
+    _, data = await run(hass, calls)
+    assert "Bin \U0001F6AE day" in texts(data)

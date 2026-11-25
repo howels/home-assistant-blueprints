@@ -118,3 +118,14 @@ async def test_calendar_state_change_writes(hass):
     hass.states.async_set("calendar.work", "on")
     await pump()
     assert len(calls) == 1
+
+
+async def test_emoji_is_stripped(hass):
+    now = dt_util.now()
+    data_in = {CAL[0]: {"events": [
+        {"start": (now + timedelta(hours=1)).isoformat(), "end": (now + timedelta(hours=2)).isoformat(),
+         "summary": "Bob with auntie Donna \U0001F43E\U0001F496", "status": "confirmed"},
+    ]}}
+    calls, _ = await setup(hass, data=data_in)
+    _, data = await run(hass, calls)
+    assert "Bob with auntie Donna" in texts(data)

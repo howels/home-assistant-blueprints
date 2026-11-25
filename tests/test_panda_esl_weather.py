@@ -52,7 +52,7 @@ def forecast_days():
     ]
 
 
-async def setup(hass, inputs=None, forecast=True, state="partlycloudy", action="write_guarded"):
+async def setup(hass, inputs=None, forecast=True, state="partlycloudy", action="write_guarded", rows=None, attrs=None):
     d = Path(hass.config.path("blueprints/automation/howels"))
     d.mkdir(parents=True, exist_ok=True)
     shutil.copy(BP, d)
@@ -70,7 +70,7 @@ async def setup(hass, inputs=None, forecast=True, state="partlycloudy", action="
         forecast_calls.append(dict(call.data))
         if not forecast:
             raise ValueError("daily forecast not supported")
-        return {WEATHER: {"forecast": forecast_days()}}
+        return {WEATHER: {"forecast": rows if rows is not None else forecast_days()}}
 
     hass.services.async_register(
         "weather", "get_forecasts", get_forecasts, supports_response=SupportsResponse.ONLY
@@ -84,6 +84,7 @@ async def setup(hass, inputs=None, forecast=True, state="partlycloudy", action="
             "humidity": 71,
             "wind_speed": 14.2,
             "wind_speed_unit": "km/h",
+            **(attrs or {}),
         },
     )
     use = {
@@ -242,3 +243,30 @@ async def test_state_change_triggers(hass):
     hass.states.async_set(WEATHER, "rainy", {"temperature": 9})
     await pump()
     assert len(calls) == 1
+
+
+def met_no_rows(rain):
+    """Met.no style daily forecast: precipitation in mm and no precipitation_probability."""
+    today = dt_util.now().replace(hour=12, minute=0, second=0, microsecond=0)
+    return [
+        {"datetime": (today + timedelta(days=i)).isoformat(), "condition": "cloudy", "temperature": 6 - i,
+         "templow": 1, "precipitation": rain, "wind_speed": 19.1, "humidity": 72}
+        for i in range(5)
+    ]
+
+
+async def test_rain_amount_when_no_probability(hass):
+    calls, _ = await setup(hass, rows=met_no_rows(0.6), attrs={"precipitation_unit": "mm"})
+    _, data = await run(hass, calls)
+    assert "0.6 mm" in texts(data)
+    assert "--" not in texts(data)
+    umbrella = [e for e in visible(data) if e.get("value") == "umbrella"][0]
+    assert umbrella["color"] == "red"
+
+
+async def test_dry_day_has_black_umbrella(hass):
+    calls, _ = await setup(hass, rows=met_no_rows(0.0), attrs={"precipitation_unit": "mm"})
+    _, data = await run(hass, calls)
+    assert "0 mm" in texts(data)
+    umbrella = [e for e in visible(data) if e.get("value") == "umbrella"][0]
+    assert umbrella["color"] == "black"

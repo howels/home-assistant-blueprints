@@ -281,9 +281,12 @@ actions:
         {% set high = today_fc.get('temperature') %}
         {% set low = today_fc.get('templow') %}
         {% if high is number %}↑{{ high | round(0) | int }}°{% if low is number %}  ↓{{ low | round(0) | int }}°{% endif %}{% endif %}
+      rain_amount: >-
+        {{ today_fc.get('precipitation_probability') if today_fc.get('precipitation_probability') is number else (today_fc.get('precipitation') if today_fc.get('precipitation') is number else 0) }}
       rain_now: >-
         {% set p = today_fc.get('precipitation_probability') %}
-        {% if p is number %}{{ p | round(0) | int }}%{% else %}--{% endif %}
+        {% set mm = today_fc.get('precipitation') %}
+        {% if p is number %}{{ p | round(0) | int }}%{% elif mm is number %}{{ '%g' | format(mm | round(1)) }} {{ state_attr(weather_entity, 'precipitation_unit') or 'mm' }}{% else %}--{% endif %}
       humidity_now: >-
         {% set h = state_attr(weather_entity, 'humidity') %}
         {% if h is number %}{{ h | round(0) | int }}%{% else %}--{% endif %}
@@ -311,7 +314,7 @@ actions:
       stat_icon_size: "{{ (stats_h * 0.58) | round(0) | int }}"
       stat_value_y: "{{ (main_bottom + stats_h * 0.80) | round(0) | int }}"
       stat_value_size: >-
-        {{ [stats_h * 0.32, W * 0.30 / (0.58 * ([wind_now | length, 5] | max))] | min | round(0) | int }}
+        {{ [stats_h * 0.32, W * 0.30 / (0.58 * ([wind_now | length, rain_now | length, 5] | max))] | min | round(0) | int }}
       col1_x: "{{ (W / 6) | round(0) | int }}"
       col2_x: "{{ (W / 2) | round(0) | int }}"
       col3_x: "{{ (W * 5 / 6) | round(0) | int }}"
@@ -412,7 +415,7 @@ actions:
           x: "{{ col1_x }}"
           "y": "{{ stat_icon_y }}"
           size: "{{ stat_icon_size }}"
-          color: red
+          color: "{{ 'red' if rain_amount > 0 else 'black' }}"
           anchor: mm
           visible: "{{ not use_emoji }}"
         - type: text
@@ -420,7 +423,7 @@ actions:
           x: "{{ col1_x }}"
           "y": "{{ stat_icon_y }}"
           size: "{{ stat_icon_size }}"
-          color: red
+          color: "{{ 'red' if rain_amount > 0 else 'black' }}"
           anchor: mm
           font: "{{ emoji_font }}"
           visible: "{{ use_emoji }}"

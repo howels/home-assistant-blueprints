@@ -116,6 +116,14 @@ blueprint:
                 - unavailable
                 - problem
                 - low
+        strip_emoji:
+          name: Strip emoji
+          description: >-
+            Removes emoji and pictographs from entity names. The text font has no
+            emoji glyphs, so each emoji would draw as an empty box.
+          default: true
+          selector:
+            boolean: {}
         title:
           name: Title
           description: Header text.
@@ -200,6 +208,8 @@ blueprint:
             text: {}
 
 variables:
+  strip_emoji: !input strip_emoji
+  emoji_pattern: "[\u2600-\u27BF\u2B00-\u2BFF\U0001F000-\U0001FAFF\uFE0F\u200D\u20E3]"
   watched: !input entities
   active_states: !input active_states
   title: !input title
@@ -236,9 +246,10 @@ actions:
           {% if states(eid) in active_states %}
             {% set secs = (now() - states[eid].last_changed).total_seconds() %}
             {% set age = ((secs / 60) | int) ~ 'm' if secs < 3600 else (((secs / 3600) | int) ~ 'h' if secs < 86400 else ((secs / 86400) | int) ~ 'd') %}
+            {% set raw = state_attr(eid, 'friendly_name') or eid %}
             {% set ns.rows = ns.rows + [{
               'ts': as_timestamp(states[eid].last_changed), 'age': age,
-              'name': state_attr(eid, 'friendly_name') or eid
+              'name': (raw | regex_replace(emoji_pattern, '') | regex_replace('\\s{2,}', ' ') if strip_emoji else raw) | trim
             }] %}
           {% endif %}
         {% endfor %}

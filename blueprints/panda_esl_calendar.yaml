@@ -99,6 +99,14 @@ blueprint:
               multiple: true
               filter:
                 - domain: calendar
+        strip_emoji:
+          name: Strip emoji
+          description: >-
+            Removes emoji and pictographs from event summaries. The text font has no
+            emoji glyphs, so each emoji would draw as an empty box.
+          default: true
+          selector:
+            boolean: {}
         title:
           name: Title
           description: Header text.
@@ -194,6 +202,8 @@ blueprint:
             text: {}
 
 variables:
+  strip_emoji: !input strip_emoji
+  emoji_pattern: "[\u2600-\u27BF\u2B00-\u2BFF\U0001F000-\U0001FAFF\uFE0F\u200D\u20E3]"
   title: !input title
   display_size: !input display_size
   days_ahead: !input days_ahead
@@ -248,9 +258,10 @@ actions:
             {% else %}
               {% set label = s.strftime('%a %H:%M') %}
             {% endif %}
+            {% set raw = e.get('summary') or '' %}
             {% set ns.rows = ns.rows + [{
               'ts': as_timestamp(s), 'label': label, 'today': days == 0,
-              'summary': e.get('summary') or ''
+              'summary': (raw | regex_replace(emoji_pattern, '') | regex_replace('\\s{2,}', ' ') if strip_emoji else raw) | trim
             }] %}
           {% endfor %}
         {% endfor %}

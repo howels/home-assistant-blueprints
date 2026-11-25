@@ -103,3 +103,9 @@ async def test_state_change_writes(hass):
     hass.states.async_set("binary_sensor.shed", "on", {"friendly_name": "Shed"})
     await pump()
     assert len(calls) == 1
+
+
+async def test_emoji_in_names_is_stripped(hass):
+    calls = await setup(hass, states={"binary_sensor.front_door": ("on", "Front \U0001F6AA door"), **{e: ("off", e) for e in WATCH[1:]}})
+    _, data = await run(hass, calls)
+    assert "Front door" in texts(data)
