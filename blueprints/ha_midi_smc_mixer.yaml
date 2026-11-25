@@ -1,0 +1,1399 @@
+blueprint:
+  name: HA-MIDI - M-VAVE SMC-Mixer
+  author: howels
+  source_url: https://github.com/howels/home-assistant-blueprints/blob/main/blueprints/ha_midi_smc_mixer.yaml
+  description: >-
+    Control lights and media players with an M-VAVE SMC-Mixer connected through
+    the ha-midi bridge.
+
+
+    The bridge publishes the mixer to MQTT in Mackie Control (DAW mode)
+    layout. This blueprint reads those topics and gives each control a fixed
+    name. It does not use the MQTT entity names.
+
+
+    **Faders 1 to 8** (`pb_0` to `pb_7`). A fader sets the brightness, colour
+    temperature, hue or saturation of lights, or the volume of media players.
+    A rising volume ramps at the rise rate and a falling volume at the fall
+    rate. The fall rate is the larger, so a quick pull down is immediate and a
+    push up is gradual. A newer fader movement replaces a ramp in progress.
+
+
+    **Dials 1 to 8** (`cc_016_00` to `cc_023_00`). A dial steps the same
+    attributes by one detent per click. Volume steps are smaller going up
+    than going down.
+
+
+    **Strip keys.** Each column has four keys.
+
+
+    | Key | Note | Lights | Media players |
+
+    |----|----|----|----|
+
+    | Record 1-8 | 0-7 | Night brightness | Previous track |
+
+    | Solo 1-8 | 8-15 | Full brightness | Next track |
+
+    | Mute 1-8 | 16-23 | Off | Mute toggle |
+
+    | Select 1-8 | 24-31 | Toggle | Play or pause |
+
+
+    **Transport keys.** These act on the media players of the media section.
+
+
+    | Key | Note | Action |
+
+    |----|----|----|
+
+    | Rewind | 91 | Seek back |
+
+    | Fast forward | 92 | Seek forward |
+
+    | Stop | 93 | Pause |
+
+    | Play | 94 | Play |
+
+    | Record | 95 | Play or pause (record media players) |
+
+    | Up | 96 | Volume up, in the volume step up |
+
+    | Down | 97 | Volume down, in the volume step down |
+
+    | Left | 98 | Previous track |
+
+    | Right | 99 | Next track |
+
+    | Previous 8 tracks | 46, 48 | Previous source |
+
+    | Next 8 tracks | 47, 49 | Next source |
+
+
+    **Key lights.** Play and Record light while their media players play. Stop
+    lights while none plays. Select lights while a strip light is on or a strip
+    media player plays. Mute lights while a strip media player is muted or all
+    strip lights are off. The blueprint publishes ON and OFF to the `set` topic
+    of each `button_light` entity, the topic that the light entity uses. It
+    updates the key lights when Home Assistant starts and when the bridge
+    reports itself online.
+
+
+    Select the mixer device from the HA-MIDI bridge. Select the Master device,
+    not the Private device, which repeats the same controls. The blueprint
+    reads the device identifier to find the MQTT topic prefix.
+
+
+    A bridge restart republishes the retained control state. A retained fader
+    at zero lowers the volume at the fall rate. Turn the automation off while
+    the bridge restarts, for example with
+    `pause_automations_on_service_restart.yaml`.
+  domain: automation
+  input:
+    device:
+      name: Mixer device
+      description: >-
+        The HA-MIDI bridge device of the SMC-Mixer Master port. Its name is
+        similar to HA-MIDI Bridge SINCO SMC-Mixer-Master.
+      selector:
+        device:
+          filter:
+            - integration: mqtt
+              manufacturer: HA-MIDI
+    media_section:
+      name: Media players
+      icon: mdi:play-pause
+      collapsed: false
+      description: Media players for the transport keys.
+      input:
+        media_players:
+          name: Media players
+          description: >-
+            Media players for Play, Stop, Rewind, Fast forward, Left, Right,
+            Up, Down and the previous and next 8 tracks keys.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: media_player
+        record_media_players:
+          name: Record key media players
+          description: >-
+            Media players that the Record key plays or pauses. When empty, the
+            Record key uses the media players above.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: media_player
+        seek_seconds:
+          name: Seek step
+          description: Seconds that Rewind and Fast forward move the position.
+          default: 10
+          selector:
+            number:
+              min: 1
+              max: 120
+              step: 1
+              mode: box
+              unit_of_measurement: s
+    volume_section:
+      name: Volume limits
+      icon: mdi:volume-high
+      collapsed: false
+      description: >-
+        Volume rises slowly and falls quickly. The maximum volume applies to
+        every control.
+      input:
+        volume_rise_rate:
+          name: Fader rise rate
+          description: >-
+            Greatest speed, in percent of full volume per second, at which a
+            fader raises the volume. A fader above the volume ramps up at this
+            speed.
+          default: 4
+          selector:
+            number:
+              min: 0.5
+              max: 50
+              step: 0.5
+              mode: slider
+              unit_of_measurement: "%/s"
+        volume_fall_rate:
+          name: Fader fall rate
+          description: >-
+            Greatest speed, in percent of full volume per second, at which a
+            fader lowers the volume. Set it higher than the rise rate.
+          default: 40
+          selector:
+            number:
+              min: 0.5
+              max: 100
+              step: 0.5
+              mode: slider
+              unit_of_measurement: "%/s"
+        volume_step_up:
+          name: Volume step up
+          description: >-
+            Percent of full volume added by one dial detent or the Up key.
+          default: 1
+          selector:
+            number:
+              min: 0.5
+              max: 10
+              step: 0.5
+              mode: slider
+              unit_of_measurement: "%"
+        volume_step_down:
+          name: Volume step down
+          description: >-
+            Percent of full volume removed by one dial detent or the Down key.
+          default: 2
+          selector:
+            number:
+              min: 0.5
+              max: 20
+              step: 0.5
+              mode: slider
+              unit_of_measurement: "%"
+        max_volume:
+          name: Maximum volume
+          description: >-
+            Percent of full volume that no control exceeds. A fader at the top
+            sets this volume. A media player already above it is not raised
+            further and can still be lowered.
+          default: 100
+          selector:
+            number:
+              min: 10
+              max: 100
+              step: 1
+              mode: slider
+              unit_of_measurement: "%"
+    light_section:
+      name: Lights
+      icon: mdi:lightbulb
+      collapsed: true
+      description: Settings for the strip lights.
+      input:
+        light_dial_step:
+          name: Dial step for lights
+          description: >-
+            Percent of the range that one dial detent moves a light. The range
+            is 100 percent for brightness and saturation, 360 degrees for hue
+            and the light's kelvin range for colour temperature.
+          default: 5
+          selector:
+            number:
+              min: 1
+              max: 25
+              step: 1
+              mode: slider
+              unit_of_measurement: "%"
+        night_brightness:
+          name: Night brightness
+          description: Brightness, in percent, that the Record key sets on lights.
+          default: 5
+          selector:
+            number:
+              min: 1
+              max: 100
+              step: 1
+              mode: slider
+              unit_of_measurement: "%"
+    strip_1:
+      name: Strip 1
+      icon: mdi:tune-vertical
+      collapsed: true
+      description: >-
+        Fader 1, Dial 1 and the Record, Solo, Mute and Select keys of column 1.
+      input:
+        strip_1_targets:
+          name: Strip 1 lights and media players
+          description: >-
+            Lights and media players controlled by Fader 1, Dial 1 and the
+            four keys of column 1. Leave empty to leave the column unused.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain:
+                    - light
+                    - media_player
+        strip_1_fader:
+          name: Fader 1 function
+          description: Attribute that Fader 1 sets on the strip entities.
+          default: auto
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: "Automatic (brightness for lights, volume for media players)"
+                  value: auto
+                - label: "Brightness"
+                  value: brightness
+                - label: "Colour temperature"
+                  value: colour_temp
+                - label: "Hue"
+                  value: hue
+                - label: "Saturation"
+                  value: saturation
+                - label: "Volume"
+                  value: volume
+                - label: "Not used"
+                  value: none
+        strip_1_dial:
+          name: Dial 1 function
+          description: Attribute that Dial 1 steps on the strip entities.
+          default: auto
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: "Automatic (brightness for lights, volume for media players)"
+                  value: auto
+                - label: "Brightness"
+                  value: brightness
+                - label: "Colour temperature"
+                  value: colour_temp
+                - label: "Hue"
+                  value: hue
+                - label: "Saturation"
+                  value: saturation
+                - label: "Volume"
+                  value: volume
+                - label: "Not used"
+                  value: none
+    strip_2:
+      name: Strip 2
+      icon: mdi:tune-vertical
+      collapsed: true
+      description: >-
+        Fader 2, Dial 2 and the Record, Solo, Mute and Select keys of column 2.
+      input:
+        strip_2_targets:
+          name: Strip 2 lights and media players
+          description: >-
+            Lights and media players controlled by Fader 2, Dial 2 and the
+            four keys of column 2. Leave empty to leave the column unused.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain:
+                    - light
+                    - media_player
+        strip_2_fader:
+          name: Fader 2 function
+          description: Attribute that Fader 2 sets on the strip entities.
+          default: auto
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: "Automatic (brightness for lights, volume for media players)"
+                  value: auto
+                - label: "Brightness"
+                  value: brightness
+                - label: "Colour temperature"
+                  value: colour_temp
+                - label: "Hue"
+                  value: hue
+                - label: "Saturation"
+                  value: saturation
+                - label: "Volume"
+                  value: volume
+                - label: "Not used"
+                  value: none
+        strip_2_dial:
+          name: Dial 2 function
+          description: Attribute that Dial 2 steps on the strip entities.
+          default: auto
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: "Automatic (brightness for lights, volume for media players)"
+                  value: auto
+                - label: "Brightness"
+                  value: brightness
+                - label: "Colour temperature"
+                  value: colour_temp
+                - label: "Hue"
+                  value: hue
+                - label: "Saturation"
+                  value: saturation
+                - label: "Volume"
+                  value: volume
+                - label: "Not used"
+                  value: none
+    strip_3:
+      name: Strip 3
+      icon: mdi:tune-vertical
+      collapsed: true
+      description: >-
+        Fader 3, Dial 3 and the Record, Solo, Mute and Select keys of column 3.
+      input:
+        strip_3_targets:
+          name: Strip 3 lights and media players
+          description: >-
+            Lights and media players controlled by Fader 3, Dial 3 and the
+            four keys of column 3. Leave empty to leave the column unused.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain:
+                    - light
+                    - media_player
+        strip_3_fader:
+          name: Fader 3 function
+          description: Attribute that Fader 3 sets on the strip entities.
+          default: auto
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: "Automatic (brightness for lights, volume for media players)"
+                  value: auto
+                - label: "Brightness"
+                  value: brightness
+                - label: "Colour temperature"
+                  value: colour_temp
+                - label: "Hue"
+                  value: hue
+                - label: "Saturation"
+                  value: saturation
+                - label: "Volume"
+                  value: volume
+                - label: "Not used"
+                  value: none
+        strip_3_dial:
+          name: Dial 3 function
+          description: Attribute that Dial 3 steps on the strip entities.
+          default: auto
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: "Automatic (brightness for lights, volume for media players)"
+                  value: auto
+                - label: "Brightness"
+                  value: brightness
+                - label: "Colour temperature"
+                  value: colour_temp
+                - label: "Hue"
+                  value: hue
+                - label: "Saturation"
+                  value: saturation
+                - label: "Volume"
+                  value: volume
+                - label: "Not used"
+                  value: none
+    strip_4:
+      name: Strip 4
+      icon: mdi:tune-vertical
+      collapsed: true
+      description: >-
+        Fader 4, Dial 4 and the Record, Solo, Mute and Select keys of column 4.
+      input:
+        strip_4_targets:
+          name: Strip 4 lights and media players
+          description: >-
+            Lights and media players controlled by Fader 4, Dial 4 and the
+            four keys of column 4. Leave empty to leave the column unused.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain:
+                    - light
+                    - media_player
+        strip_4_fader:
+          name: Fader 4 function
+          description: Attribute that Fader 4 sets on the strip entities.
+          default: auto
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: "Automatic (brightness for lights, volume for media players)"
+                  value: auto
+                - label: "Brightness"
+                  value: brightness
+                - label: "Colour temperature"
+                  value: colour_temp
+                - label: "Hue"
+                  value: hue
+                - label: "Saturation"
+                  value: saturation
+                - label: "Volume"
+                  value: volume
+                - label: "Not used"
+                  value: none
+        strip_4_dial:
+          name: Dial 4 function
+          description: Attribute that Dial 4 steps on the strip entities.
+          default: auto
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: "Automatic (brightness for lights, volume for media players)"
+                  value: auto
+                - label: "Brightness"
+                  value: brightness
+                - label: "Colour temperature"
+                  value: colour_temp
+                - label: "Hue"
+                  value: hue
+                - label: "Saturation"
+                  value: saturation
+                - label: "Volume"
+                  value: volume
+                - label: "Not used"
+                  value: none
+    strip_5:
+      name: Strip 5
+      icon: mdi:tune-vertical
+      collapsed: true
+      description: >-
+        Fader 5, Dial 5 and the Record, Solo, Mute and Select keys of column 5.
+      input:
+        strip_5_targets:
+          name: Strip 5 lights and media players
+          description: >-
+            Lights and media players controlled by Fader 5, Dial 5 and the
+            four keys of column 5. Leave empty to leave the column unused.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain:
+                    - light
+                    - media_player
+        strip_5_fader:
+          name: Fader 5 function
+          description: Attribute that Fader 5 sets on the strip entities.
+          default: auto
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: "Automatic (brightness for lights, volume for media players)"
+                  value: auto
+                - label: "Brightness"
+                  value: brightness
+                - label: "Colour temperature"
+                  value: colour_temp
+                - label: "Hue"
+                  value: hue
+                - label: "Saturation"
+                  value: saturation
+                - label: "Volume"
+                  value: volume
+                - label: "Not used"
+                  value: none
+        strip_5_dial:
+          name: Dial 5 function
+          description: Attribute that Dial 5 steps on the strip entities.
+          default: auto
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: "Automatic (brightness for lights, volume for media players)"
+                  value: auto
+                - label: "Brightness"
+                  value: brightness
+                - label: "Colour temperature"
+                  value: colour_temp
+                - label: "Hue"
+                  value: hue
+                - label: "Saturation"
+                  value: saturation
+                - label: "Volume"
+                  value: volume
+                - label: "Not used"
+                  value: none
+    strip_6:
+      name: Strip 6
+      icon: mdi:tune-vertical
+      collapsed: true
+      description: >-
+        Fader 6, Dial 6 and the Record, Solo, Mute and Select keys of column 6.
+      input:
+        strip_6_targets:
+          name: Strip 6 lights and media players
+          description: >-
+            Lights and media players controlled by Fader 6, Dial 6 and the
+            four keys of column 6. Leave empty to leave the column unused.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain:
+                    - light
+                    - media_player
+        strip_6_fader:
+          name: Fader 6 function
+          description: Attribute that Fader 6 sets on the strip entities.
+          default: auto
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: "Automatic (brightness for lights, volume for media players)"
+                  value: auto
+                - label: "Brightness"
+                  value: brightness
+                - label: "Colour temperature"
+                  value: colour_temp
+                - label: "Hue"
+                  value: hue
+                - label: "Saturation"
+                  value: saturation
+                - label: "Volume"
+                  value: volume
+                - label: "Not used"
+                  value: none
+        strip_6_dial:
+          name: Dial 6 function
+          description: Attribute that Dial 6 steps on the strip entities.
+          default: auto
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: "Automatic (brightness for lights, volume for media players)"
+                  value: auto
+                - label: "Brightness"
+                  value: brightness
+                - label: "Colour temperature"
+                  value: colour_temp
+                - label: "Hue"
+                  value: hue
+                - label: "Saturation"
+                  value: saturation
+                - label: "Volume"
+                  value: volume
+                - label: "Not used"
+                  value: none
+    strip_7:
+      name: Strip 7
+      icon: mdi:tune-vertical
+      collapsed: true
+      description: >-
+        Fader 7, Dial 7 and the Record, Solo, Mute and Select keys of column 7.
+      input:
+        strip_7_targets:
+          name: Strip 7 lights and media players
+          description: >-
+            Lights and media players controlled by Fader 7, Dial 7 and the
+            four keys of column 7. Leave empty to leave the column unused.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain:
+                    - light
+                    - media_player
+        strip_7_fader:
+          name: Fader 7 function
+          description: Attribute that Fader 7 sets on the strip entities.
+          default: auto
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: "Automatic (brightness for lights, volume for media players)"
+                  value: auto
+                - label: "Brightness"
+                  value: brightness
+                - label: "Colour temperature"
+                  value: colour_temp
+                - label: "Hue"
+                  value: hue
+                - label: "Saturation"
+                  value: saturation
+                - label: "Volume"
+                  value: volume
+                - label: "Not used"
+                  value: none
+        strip_7_dial:
+          name: Dial 7 function
+          description: Attribute that Dial 7 steps on the strip entities.
+          default: auto
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: "Automatic (brightness for lights, volume for media players)"
+                  value: auto
+                - label: "Brightness"
+                  value: brightness
+                - label: "Colour temperature"
+                  value: colour_temp
+                - label: "Hue"
+                  value: hue
+                - label: "Saturation"
+                  value: saturation
+                - label: "Volume"
+                  value: volume
+                - label: "Not used"
+                  value: none
+    strip_8:
+      name: Strip 8
+      icon: mdi:tune-vertical
+      collapsed: true
+      description: >-
+        Fader 8, Dial 8 and the Record, Solo, Mute and Select keys of column 8.
+      input:
+        strip_8_targets:
+          name: Strip 8 lights and media players
+          description: >-
+            Lights and media players controlled by Fader 8, Dial 8 and the
+            four keys of column 8. Leave empty to leave the column unused.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain:
+                    - light
+                    - media_player
+        strip_8_fader:
+          name: Fader 8 function
+          description: Attribute that Fader 8 sets on the strip entities.
+          default: auto
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: "Automatic (brightness for lights, volume for media players)"
+                  value: auto
+                - label: "Brightness"
+                  value: brightness
+                - label: "Colour temperature"
+                  value: colour_temp
+                - label: "Hue"
+                  value: hue
+                - label: "Saturation"
+                  value: saturation
+                - label: "Volume"
+                  value: volume
+                - label: "Not used"
+                  value: none
+        strip_8_dial:
+          name: Dial 8 function
+          description: Attribute that Dial 8 steps on the strip entities.
+          default: auto
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: "Automatic (brightness for lights, volume for media players)"
+                  value: auto
+                - label: "Brightness"
+                  value: brightness
+                - label: "Colour temperature"
+                  value: colour_temp
+                - label: "Hue"
+                  value: hue
+                - label: "Saturation"
+                  value: saturation
+                - label: "Volume"
+                  value: volume
+                - label: "Not used"
+                  value: none
+    advanced_section:
+      name: Advanced
+      icon: mdi:cog
+      collapsed: true
+      description: Settings that the defaults already cover for the ha-midi bridge.
+      input:
+        topic_prefix:
+          name: Topic prefix
+          description: >-
+            MQTT topic prefix of the mixer, for example
+            ha-midi/ha-midi-bridge/sincosinco_smc_mixer_master_161. Leave empty
+            to derive it from the device identifier.
+          default: ""
+          selector:
+            text:
+        state_topic_filter:
+          name: State topic filter
+          description: >-
+            MQTT filter that matches the state topics of every bridge device.
+            The blueprint ignores topics outside the selected device. The first
+            level is also the root of the derived topic prefix.
+          default: ha-midi/+/+/+/state
+          selector:
+            text:
+        log_events:
+          name: Log events
+          description: >-
+            Write the control name and value of each mixer event to the system
+            log. Use it to check that Fader 1 and Dial 1 are the controls
+            expected.
+          default: false
+          selector:
+            boolean:
+mode: parallel
+max: 60
+max_exceeded: silent
+triggers:
+  - trigger: mqtt
+    id: midi
+    topic: !input state_topic_filter
+  - trigger: mqtt
+    id: sync_bridge
+    topic: ha-midi/+/+/availability
+    payload: online
+  - trigger: homeassistant
+    id: sync_start
+    event: start
+  - trigger: state
+    id: led_media
+    entity_id: !input media_players
+  - trigger: state
+    id: led_media
+    entity_id: !input record_media_players
+  - trigger: state
+    id: led_strip_1
+    entity_id: !input strip_1_targets
+  - trigger: state
+    id: led_strip_2
+    entity_id: !input strip_2_targets
+  - trigger: state
+    id: led_strip_3
+    entity_id: !input strip_3_targets
+  - trigger: state
+    id: led_strip_4
+    entity_id: !input strip_4_targets
+  - trigger: state
+    id: led_strip_5
+    entity_id: !input strip_5_targets
+  - trigger: state
+    id: led_strip_6
+    entity_id: !input strip_6_targets
+  - trigger: state
+    id: led_strip_7
+    entity_id: !input strip_7_targets
+  - trigger: state
+    id: led_strip_8
+    entity_id: !input strip_8_targets
+variables:
+  bridge_device: !input device
+  prefix_override: !input topic_prefix
+  topic_filter: !input state_topic_filter
+  media_players: !input media_players
+  record_players_input: !input record_media_players
+  seek_seconds: !input seek_seconds
+  volume_rise_rate: !input volume_rise_rate
+  volume_fall_rate: !input volume_fall_rate
+  volume_step_up: !input volume_step_up
+  volume_step_down: !input volume_step_down
+  volume_cap: !input max_volume
+  light_dial_step: !input light_dial_step
+  night_brightness: !input night_brightness
+  log_events: !input log_events
+  strips:
+    - targets: !input strip_1_targets
+      fader: !input strip_1_fader
+      dial: !input strip_1_dial
+    - targets: !input strip_2_targets
+      fader: !input strip_2_fader
+      dial: !input strip_2_dial
+    - targets: !input strip_3_targets
+      fader: !input strip_3_fader
+      dial: !input strip_3_dial
+    - targets: !input strip_4_targets
+      fader: !input strip_4_fader
+      dial: !input strip_4_dial
+    - targets: !input strip_5_targets
+      fader: !input strip_5_fader
+      dial: !input strip_5_dial
+    - targets: !input strip_6_targets
+      fader: !input strip_6_fader
+      dial: !input strip_6_dial
+    - targets: !input strip_7_targets
+      fader: !input strip_7_fader
+      dial: !input strip_7_dial
+    - targets: !input strip_8_targets
+      fader: !input strip_8_fader
+      dial: !input strip_8_dial
+  record_players: "{{ record_players_input if record_players_input | length > 0 else media_players }}"
+  ramp_interval: 0.5
+  light_functions: [brightness, colour_temp, hue, saturation]
+  transport_keys:
+    - rewind
+    - fast_forward
+    - stop
+    - play
+    - record
+    - up
+    - down
+    - left
+    - right
+    - bank_prev
+    - bank_next
+  bridge_identifier: >-
+    {% set ns = namespace(value='') %}
+    {% for item in device_attr(bridge_device, 'identifiers') | default([], true) %}
+    {% if item[0] == 'mqtt' %}{% set ns.value = item[1] %}{% endif %}
+    {% endfor %}
+    {{ ns.value }}
+  bridge_prefix: >-
+    {% if prefix_override | length > 0 %}
+    {{ prefix_override.strip('/') }}
+    {% elif '_' in bridge_identifier %}
+    {{ topic_filter.split('/')[0] }}/{{ bridge_identifier.split('_', 1)[0] }}/{{ bridge_identifier.split('_', 1)[1] }}
+    {% endif %}
+  topic: "{{ trigger.topic | default('') }}"
+  from_bridge: "{{ bridge_prefix | length > 0 and topic.startswith(bridge_prefix ~ '/') }}"
+  leaf: "{{ topic[(bridge_prefix | length + 1):].split('/')[0] if from_bridge else '' }}"
+  payload: "{{ trigger.payload | default('') }}"
+  kind: >-
+    {% if leaf.startswith('button_state_') %}button
+    {% elif leaf.startswith('pb_') %}fader
+    {% elif leaf.startswith('cc_') %}dial
+    {% else %}other{% endif %}
+  number: >-
+    {% if kind == 'button' %}{{ leaf.split('_')[2] | int(-1) }}
+    {% elif kind in ['fader', 'dial'] %}{{ leaf.split('_')[1] | int(-1) }}
+    {% else %}-1{% endif %}
+  control: >-
+    {% if kind == 'fader' and 0 <= number <= 7 %}fader_{{ number + 1 }}
+    {% elif kind == 'dial' and 16 <= number <= 23 %}dial_{{ number - 15 }}
+    {% elif kind == 'button' and 0 <= number <= 31 %}{{ ['rec', 'solo', 'mute', 'select'][number // 8] }}_{{ number % 8 + 1 }}
+    {% elif kind == 'button' %}{{ {91: 'rewind', 92: 'fast_forward', 93: 'stop', 94: 'play', 95: 'record', 96: 'up', 97: 'down', 98: 'left', 99: 'right', 46: 'bank_prev', 48: 'bank_prev', 47: 'bank_next', 49: 'bank_next'}.get(number, '') }}
+    {% endif %}
+  control_name: >-
+    {% set part = control.split('_') %}
+    {% if control.startswith('fader_') %}Fader {{ part[1] }}
+    {% elif control.startswith('dial_') %}Dial {{ part[1] }}
+    {% elif part[0] in ['rec', 'solo', 'mute', 'select'] %}Strip {{ part[1] }} {{ {'rec': 'Record', 'solo': 'Solo', 'mute': 'Mute', 'select': 'Select'}[part[0]] }}
+    {% else %}{{ {'rewind': 'Rewind', 'fast_forward': 'Fast forward', 'stop': 'Stop', 'play': 'Play', 'record': 'Record', 'up': 'Up', 'down': 'Down', 'left': 'Left', 'right': 'Right', 'bank_prev': 'Previous 8 tracks', 'bank_next': 'Next 8 tracks'}.get(control, control) }}{% endif %}
+  pressed: "{{ kind == 'button' and payload == 'ON' }}"
+  strip_number: "{{ control.split('_')[-1] | int(0) }}"
+  strip_key: "{{ control.split('_')[0] if strip_number > 0 and kind == 'button' else '' }}"
+  strip: "{{ strips[strip_number - 1] if 1 <= strip_number <= 8 else {} }}"
+  strip_targets: "{{ strip.targets | default([], true) }}"
+  strip_lights: "{{ strip_targets | select('match', '^light[.]') | list }}"
+  strip_players: "{{ strip_targets | select('match', '^media_player[.]') | list }}"
+  fader_value: "{{ payload | float(0) }}"
+  fader_entity: >-
+    {{ (device_entities(bridge_device)
+        | select('search', '^number[.].*_pitch_bend_channel_' ~ number ~ '$')
+        | list | first | default('')) if control.startswith('fader_') else '' }}
+  fader_fresh: >-
+    {{ fader_entity == '' or not (states(fader_entity) | is_number)
+       or states(fader_entity) | float == fader_value }}
+  fader_function: "{{ strip.fader | default('none') if control.startswith('fader_') else 'none' }}"
+  dial_function: "{{ strip.dial | default('none') if control.startswith('dial_') and payload | int(0) % 64 > 0 else 'none' }}"
+  volume_step_dir: >-
+    {% if pressed and control == 'up' %}1
+    {% elif pressed and control == 'down' %}-1
+    {% elif dial_function in ['auto', 'volume'] %}{{ 1 if payload | int(0) < 64 else -1 }}
+    {% else %}0{% endif %}
+  volume_step_ticks: "{{ payload | int(0) % 64 if control.startswith('dial_') else 1 }}"
+  volume_step_players: "{{ media_players if control in ['up', 'down'] else strip_players }}"
+conditions:
+  - alias: The event is from the selected mixer
+    condition: template
+    value_template: "{{ trigger.id not in ['midi', 'sync_bridge'] or from_bridge }}"
+actions:
+  - alias: Log the event
+    if:
+      - condition: template
+        value_template: "{{ log_events and trigger.id == 'midi' and control != '' }}"
+    then:
+      - action: system_log.write
+        data:
+          level: info
+          logger: homeassistant.blueprints.ha_midi_smc_mixer
+          message: "{{ control_name }}: {{ payload }}"
+
+  - alias: Fader sets light attribute
+    if:
+      - condition: template
+        value_template: >-
+          {{ trigger.id == 'midi' and fader_function != 'none' and fader_fresh
+             and strip_lights | length > 0
+             and (fader_function == 'auto' or fader_function in light_functions) }}
+    then:
+      - variables:
+          light_function: "{{ 'brightness' if fader_function == 'auto' else fader_function }}"
+      - repeat:
+          for_each: "{{ strip_lights }}"
+          sequence:
+            - choose:
+                - conditions: "{{ light_function == 'brightness' and fader_value <= 0 }}"
+                  sequence:
+                    - action: light.turn_off
+                      continue_on_error: true
+                      target:
+                        entity_id: "{{ repeat.item }}"
+                      data:
+                        transition: 0
+                - conditions: "{{ light_function == 'brightness' }}"
+                  sequence:
+                    - action: light.turn_on
+                      continue_on_error: true
+                      target:
+                        entity_id: "{{ repeat.item }}"
+                      data:
+                        brightness_pct: "{{ [fader_value | round(0) | int, 1] | max }}"
+                        transition: 0
+                - conditions: "{{ light_function == 'colour_temp' }}"
+                  sequence:
+                    - action: light.turn_on
+                      continue_on_error: true
+                      target:
+                        entity_id: "{{ repeat.item }}"
+                      data:
+                        color_temp_kelvin: >-
+                          {% set low = state_attr(repeat.item, 'min_color_temp_kelvin') | int(2000) %}
+                          {% set high = state_attr(repeat.item, 'max_color_temp_kelvin') | int(6500) %}
+                          {{ (low + (high - low) * fader_value / 100) | round(0) | int }}
+                        transition: 0
+                - conditions: "{{ light_function == 'hue' }}"
+                  sequence:
+                    - action: light.turn_on
+                      continue_on_error: true
+                      target:
+                        entity_id: "{{ repeat.item }}"
+                      data:
+                        hs_color:
+                          - "{{ (fader_value * 3.6) | round(1) }}"
+                          - "{{ ((state_attr(repeat.item, 'hs_color') or [0, 100])[1]) | float(100) }}"
+                        transition: 0
+                - conditions: "{{ light_function == 'saturation' }}"
+                  sequence:
+                    - action: light.turn_on
+                      continue_on_error: true
+                      target:
+                        entity_id: "{{ repeat.item }}"
+                      data:
+                        hs_color:
+                          - "{{ ((state_attr(repeat.item, 'hs_color') or [0, 100])[0]) | float(0) }}"
+                          - "{{ fader_value }}"
+                        transition: 0
+
+  - alias: Fader ramps media player volume
+    if:
+      - condition: template
+        value_template: >-
+          {{ trigger.id == 'midi' and fader_function in ['auto', 'volume']
+             and strip_players | length > 0 }}
+    then:
+      - alias: Wait for the fader to settle
+        delay:
+          milliseconds: 150
+      - variables:
+          fader_moved: >-
+            {{ fader_entity != '' and states(fader_entity) | is_number
+               and states(fader_entity) | float != fader_value }}
+      - if:
+          - condition: template
+            value_template: "{{ not fader_moved }}"
+        then:
+          - variables:
+              volume_target: "{{ [[fader_value, 100] | min, 0] | max / 100 * volume_cap / 100 }}"
+              ramp_plan: >-
+                {% set ns = namespace(plan=[]) %}
+                {% for player in strip_players %}
+                {% set current = state_attr(player, 'volume_level') %}
+                {% if current is number %}
+                {% set rising = volume_target > current %}
+                {% set step = [(volume_rise_rate if rising else volume_fall_rate) | float(1) / 100 * ramp_interval, 0.0001] | max %}
+                {% set ns.plan = ns.plan + [{'entity': player, 'start': current, 'step': step if rising else -step, 'count': ((((volume_target - current) | abs) / step) - 0.001) | round(0, 'ceil') | int}] %}
+                {% endif %}
+                {% endfor %}
+                {{ ns.plan }}
+              ramp_iterations: >-
+                {{ (ramp_plan | map(attribute='count') | list | max) if ramp_plan | length > 0 else 0 }}
+          - repeat:
+              sequence:
+                - variables:
+                    ramp_k: "{{ repeat.index }}"
+                    ramp_moved: >-
+                      {{ fader_entity != '' and states(fader_entity) | is_number
+                         and states(fader_entity) | float != fader_value }}
+                - if:
+                    - condition: template
+                      value_template: "{{ not ramp_moved }}"
+                  then:
+                    - repeat:
+                        for_each: "{{ ramp_plan }}"
+                        sequence:
+                          - if:
+                              - condition: template
+                                value_template: "{{ ramp_k <= repeat.item.count }}"
+                            then:
+                              - action: media_player.volume_set
+                                continue_on_error: true
+                                target:
+                                  entity_id: "{{ repeat.item.entity }}"
+                                data:
+                                  volume_level: >-
+                                    {% set level = repeat.item.start + repeat.item.step * ramp_k %}
+                                    {{ ([level, volume_target] | min if repeat.item.step > 0 else [level, volume_target] | max) | round(4) }}
+                    - delay:
+                        seconds: "{{ ramp_interval }}"
+              until: >-
+                {{ repeat.index >= ramp_iterations
+                   or (fader_entity != '' and states(fader_entity) | is_number
+                       and states(fader_entity) | float != fader_value) }}
+
+  - alias: Dial steps light attribute
+    if:
+      - condition: template
+        value_template: >-
+          {{ trigger.id == 'midi' and dial_function != 'none'
+             and strip_lights | length > 0
+             and (dial_function == 'auto' or dial_function in light_functions) }}
+    then:
+      - variables:
+          dial_dir: "{{ 1 if payload | int(0) < 64 else -1 }}"
+          dial_ticks: "{{ payload | int(0) % 64 }}"
+          light_function: "{{ 'brightness' if dial_function == 'auto' else dial_function }}"
+          dial_pct: "{{ dial_ticks * dial_dir * light_dial_step }}"
+      - choose:
+          - conditions: "{{ light_function == 'brightness' }}"
+            sequence:
+              - action: light.turn_on
+                continue_on_error: true
+                target:
+                  entity_id: "{{ strip_lights }}"
+                data:
+                  brightness_step_pct: "{{ dial_pct }}"
+                  transition: 0
+        default:
+          - repeat:
+              for_each: "{{ strip_lights }}"
+              sequence:
+                - choose:
+                    - conditions: "{{ light_function == 'colour_temp' }}"
+                      sequence:
+                        - action: light.turn_on
+                          continue_on_error: true
+                          target:
+                            entity_id: "{{ repeat.item }}"
+                          data:
+                            color_temp_kelvin: >-
+                              {% set low = state_attr(repeat.item, 'min_color_temp_kelvin') | int(2000) %}
+                              {% set high = state_attr(repeat.item, 'max_color_temp_kelvin') | int(6500) %}
+                              {% set current = state_attr(repeat.item, 'color_temp_kelvin') | int(low) %}
+                              {{ [[current + (high - low) * dial_pct / 100, low] | max, high] | min | round(0) | int }}
+                            transition: 0
+                    - conditions: "{{ light_function == 'hue' }}"
+                      sequence:
+                        - action: light.turn_on
+                          continue_on_error: true
+                          target:
+                            entity_id: "{{ repeat.item }}"
+                          data:
+                            hs_color:
+                              - >-
+                                {{ (((state_attr(repeat.item, 'hs_color') or [0, 100])[0] | float(0) + 3.6 * dial_pct) % 360) | round(1) }}
+                              - "{{ ((state_attr(repeat.item, 'hs_color') or [0, 100])[1]) | float(100) }}"
+                            transition: 0
+                    - conditions: "{{ light_function == 'saturation' }}"
+                      sequence:
+                        - action: light.turn_on
+                          continue_on_error: true
+                          target:
+                            entity_id: "{{ repeat.item }}"
+                          data:
+                            hs_color:
+                              - "{{ ((state_attr(repeat.item, 'hs_color') or [0, 100])[0]) | float(0) }}"
+                              - >-
+                                {{ [[(state_attr(repeat.item, 'hs_color') or [0, 100])[1] | float(100) + dial_pct, 0] | max, 100] | min | round(1) }}
+                            transition: 0
+
+  - alias: Dial and Up and Down keys step media player volume
+    if:
+      - condition: template
+        value_template: >-
+          {{ trigger.id == 'midi' and volume_step_dir != 0
+             and volume_step_players | length > 0
+             and (control in ['up', 'down'] or dial_function != 'none') }}
+    then:
+      - repeat:
+          for_each: "{{ volume_step_players }}"
+          sequence:
+            - variables:
+                current: "{{ state_attr(repeat.item, 'volume_level') }}"
+                next_level: >-
+                  {% if current is not number %}{{ none }}
+                  {% elif volume_step_dir > 0 %}
+                  {{ [current + volume_step_ticks * volume_step_up / 100, [current, volume_cap / 100] | max] | min | round(4) }}
+                  {% else %}
+                  {{ [current - volume_step_ticks * volume_step_down / 100, 0] | max | round(4) }}
+                  {% endif %}
+            - if:
+                - condition: template
+                  value_template: "{{ current is number and next_level != current }}"
+              then:
+                - action: media_player.volume_set
+                  continue_on_error: true
+                  target:
+                    entity_id: "{{ repeat.item }}"
+                  data:
+                    volume_level: "{{ next_level }}"
+
+  - alias: Strip keys control lights
+    if:
+      - condition: template
+        value_template: "{{ pressed and strip_key != '' and strip_lights | length > 0 }}"
+    then:
+      - choose:
+          - conditions: "{{ strip_key == 'select' }}"
+            sequence:
+              - action: light.toggle
+                continue_on_error: true
+                target:
+                  entity_id: "{{ strip_lights }}"
+          - conditions: "{{ strip_key == 'solo' }}"
+            sequence:
+              - action: light.turn_on
+                continue_on_error: true
+                target:
+                  entity_id: "{{ strip_lights }}"
+                data:
+                  brightness_pct: 100
+          - conditions: "{{ strip_key == 'mute' }}"
+            sequence:
+              - action: light.turn_off
+                continue_on_error: true
+                target:
+                  entity_id: "{{ strip_lights }}"
+          - conditions: "{{ strip_key == 'rec' }}"
+            sequence:
+              - action: light.turn_on
+                continue_on_error: true
+                target:
+                  entity_id: "{{ strip_lights }}"
+                data:
+                  brightness_pct: "{{ night_brightness }}"
+
+  - alias: Strip keys control media players
+    if:
+      - condition: template
+        value_template: "{{ pressed and strip_key != '' and strip_players | length > 0 }}"
+    then:
+      - choose:
+          - conditions: "{{ strip_key == 'select' }}"
+            sequence:
+              - action: media_player.media_play_pause
+                continue_on_error: true
+                target:
+                  entity_id: "{{ strip_players }}"
+          - conditions: "{{ strip_key == 'solo' }}"
+            sequence:
+              - action: media_player.media_next_track
+                continue_on_error: true
+                target:
+                  entity_id: "{{ strip_players }}"
+          - conditions: "{{ strip_key == 'rec' }}"
+            sequence:
+              - action: media_player.media_previous_track
+                continue_on_error: true
+                target:
+                  entity_id: "{{ strip_players }}"
+          - conditions: "{{ strip_key == 'mute' }}"
+            sequence:
+              - repeat:
+                  for_each: "{{ strip_players }}"
+                  sequence:
+                    - action: media_player.volume_mute
+                      continue_on_error: true
+                      target:
+                        entity_id: "{{ repeat.item }}"
+                      data:
+                        is_volume_muted: "{{ not is_state_attr(repeat.item, 'is_volume_muted', true) }}"
+
+  - alias: Transport keys control media players
+    if:
+      - condition: template
+        value_template: >-
+          {{ pressed and control in transport_keys
+             and control not in ['up', 'down']
+             and (media_players | length > 0 or record_players | length > 0) }}
+    then:
+      - choose:
+          - conditions: "{{ control == 'play' and media_players | length > 0 }}"
+            sequence:
+              - action: media_player.media_play
+                continue_on_error: true
+                target:
+                  entity_id: "{{ media_players }}"
+          - conditions: "{{ control == 'stop' and media_players | length > 0 }}"
+            sequence:
+              - action: media_player.media_pause
+                continue_on_error: true
+                target:
+                  entity_id: "{{ media_players }}"
+          - conditions: "{{ control == 'record' and record_players | length > 0 }}"
+            sequence:
+              - action: media_player.media_play_pause
+                continue_on_error: true
+                target:
+                  entity_id: "{{ record_players }}"
+          - conditions: "{{ control == 'left' and media_players | length > 0 }}"
+            sequence:
+              - action: media_player.media_previous_track
+                continue_on_error: true
+                target:
+                  entity_id: "{{ media_players }}"
+          - conditions: "{{ control == 'right' and media_players | length > 0 }}"
+            sequence:
+              - action: media_player.media_next_track
+                continue_on_error: true
+                target:
+                  entity_id: "{{ media_players }}"
+          - conditions: "{{ control in ['rewind', 'fast_forward'] }}"
+            sequence:
+              - repeat:
+                  for_each: "{{ media_players }}"
+                  sequence:
+                    - variables:
+                        seek_base: "{{ state_attr(repeat.item, 'media_position') }}"
+                        seek_duration: "{{ state_attr(repeat.item, 'media_duration') }}"
+                        seek_updated: "{{ state_attr(repeat.item, 'media_position_updated_at') }}"
+                        seek_now: >-
+                          {% if seek_base is number and is_state(repeat.item, 'playing') and seek_updated %}
+                          {{ seek_base + (now() - as_datetime(seek_updated)).total_seconds() }}
+                          {% else %}{{ seek_base }}{% endif %}
+                        seek_target: >-
+                          {% if seek_now is number %}
+                          {% set moved = seek_now + (seek_seconds if control == 'fast_forward' else -seek_seconds) %}
+                          {{ [[moved, 0] | max, seek_duration] | min if seek_duration is number else [moved, 0] | max }}
+                          {% endif %}
+                    - if:
+                        - condition: template
+                          value_template: "{{ seek_now is number }}"
+                      then:
+                        - action: media_player.media_seek
+                          continue_on_error: true
+                          target:
+                            entity_id: "{{ repeat.item }}"
+                          data:
+                            seek_position: "{{ seek_target | round(1) }}"
+          - conditions: "{{ control in ['bank_prev', 'bank_next'] }}"
+            sequence:
+              - repeat:
+                  for_each: "{{ media_players }}"
+                  sequence:
+                    - variables:
+                        source_list: "{{ state_attr(repeat.item, 'source_list') or [] }}"
+                        source_now: "{{ state_attr(repeat.item, 'source') }}"
+                        source_step: "{{ 1 if control == 'bank_next' else -1 }}"
+                        source_next: >-
+                          {% set count = source_list | length %}
+                          {% if count == 0 %}
+                          {% elif source_now in source_list %}{{ source_list[(source_list.index(source_now) + source_step) % count] }}
+                          {% else %}{{ source_list[0] if source_step > 0 else source_list[count - 1] }}{% endif %}
+                    - if:
+                        - condition: template
+                          value_template: "{{ source_next | string | length > 0 }}"
+                      then:
+                        - action: media_player.select_source
+                          continue_on_error: true
+                          target:
+                            entity_id: "{{ repeat.item }}"
+                          data:
+                            source: "{{ source_next }}"
+
+  - alias: Update key lights
+    if:
+      - condition: template
+        value_template: >-
+          {{ (trigger.id.startswith('led_') or trigger.id.startswith('sync_'))
+             and bridge_prefix | length > 0
+             and (trigger.id in ['sync_start', 'sync_bridge']
+                  or (trigger.from_state is not none
+                      and trigger.to_state is not none
+                      and (trigger.from_state.state != trigger.to_state.state
+                           or trigger.from_state.attributes.is_volume_muted
+                              != trigger.to_state.attributes.is_volume_muted))) }}
+    then:
+      - variables:
+          led_updates: >-
+            {% set ns = namespace(items=[]) %}
+            {% if trigger.id in ['sync_start', 'sync_bridge', 'led_media'] %}
+            {% set playing = media_players | select('is_state', 'playing') | list | length > 0 %}
+            {% set record_playing = record_players | select('is_state', 'playing') | list | length > 0 %}
+            {% set ns.items = ns.items + [{'note': 94, 'on': playing}, {'note': 93, 'on': not playing}, {'note': 95, 'on': record_playing}] %}
+            {% endif %}
+            {% for n in range(1, 9) %}
+            {% if trigger.id in ['sync_start', 'sync_bridge'] or trigger.id == 'led_strip_' ~ n %}
+            {% set targets = strips[n - 1].targets | default([], true) %}
+            {% set lights = targets | select('match', '^light[.]') | list %}
+            {% set players = targets | select('match', '^media_player[.]') | list %}
+            {% set lights_on = lights | select('is_state', 'on') | list | length %}
+            {% set selected = lights_on > 0 or (players | select('is_state', 'playing') | list | length > 0) %}
+            {% set muted = (players | select('is_state_attr', 'is_volume_muted', true) | list | length > 0) or (lights | length > 0 and lights_on == 0) %}
+            {% set ns.items = ns.items + [{'note': 23 + n, 'on': selected}, {'note': 15 + n, 'on': muted}] %}
+            {% endif %}
+            {% endfor %}
+            {{ ns.items }}
+      - repeat:
+          for_each: "{{ led_updates }}"
+          sequence:
+            - action: mqtt.publish
+              continue_on_error: true
+              data:
+                topic: "{{ bridge_prefix }}/button_light_{{ '%03d' | format(repeat.item.note) }}_00/set"
+                payload: "{{ 'ON' if repeat.item.on else 'OFF' }}"
