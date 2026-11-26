@@ -343,8 +343,11 @@ async def test_volume_ramp_waits_for_the_fader_to_be_still(hass, freezer, mqtt_m
 
 async def test_dial_steps_light_brightness(env):
     await env.fire("cc_016_00", "1")
+    await env.tick(0.3)
     await env.fire("cc_016_00", "65")
+    await env.tick(0.3)
     await env.fire("cc_016_00", "3")
+    await env.tick(0.3)
     steps = [c[1]["brightness_step_pct"] for c in env.calls_of("light.turn_on")]
     assert steps == [5, -5, 15]
 
@@ -374,6 +377,7 @@ async def test_dial_volume_respects_maximum_and_floor(hass, freezer, mqtt_mock):
 async def test_dial_colour_temperature(hass, freezer, mqtt_mock):
     env = await setup(hass, freezer, mqtt_mock, {"strip_1_dial": "colour_temp"})
     await env.fire("cc_016_00", "1")
+    await env.tick(0.3)
     assert env.calls[-1][1]["color_temp_kelvin"] == 4225
 
 
@@ -391,13 +395,16 @@ async def test_dial_colour_temperature_on_rgb_only_light(hass, freezer, mqtt_moc
     }
     env = await setup(hass, freezer, mqtt_mock, {"strip_1_dial": "colour_temp"}, light_state=states)
     await env.fire("cc_016_00", "1")                      # clockwise: colder
+    await env.tick(0.3)
     assert 3200 <= env.calls[-1][1]["color_temp_kelvin"] <= 3260
     await env.fire("cc_016_00", "65")                     # anticlockwise: warmer
+    await env.tick(0.3)
     assert 2740 <= env.calls[-1][1]["color_temp_kelvin"] <= 2800
 
     for start in (5000, 6000):                            # the cold side is read from the red channel
         hass.states.async_set("light.lamp", "on", {**states["light.lamp"][1], "rgb_color": rgb_for(start)})
         await env.fire("cc_016_00", "65")
+        await env.tick(0.3)
         assert start - 225 - 60 <= env.calls[-1][1]["color_temp_kelvin"] <= start - 225 + 60
 
 
@@ -405,19 +412,55 @@ async def test_dial_colour_temperature_without_any_reading_starts_warm(hass, fre
     states = {"light.lamp": ("on", {"supported_color_modes": ["rgb"], "color_mode": "rgb"})}
     env = await setup(hass, freezer, mqtt_mock, {"strip_1_dial": "colour_temp"}, light_state=states)
     await env.fire("cc_016_00", "1")
+    await env.tick(0.3)
     assert env.calls[-1][1]["color_temp_kelvin"] == 2225
 
 
 async def test_dial_hue_and_saturation(hass, freezer, mqtt_mock):
     env = await setup(hass, freezer, mqtt_mock, {"strip_1_dial": "hue"})
     await env.fire("cc_016_00", "65")
+    await env.tick(0.3)
     assert env.calls[-1][1]["hs_color"] == [102.0, 50.0]
 
 
 async def test_dial_saturation(hass, freezer, mqtt_mock):
     env = await setup(hass, freezer, mqtt_mock, {"strip_1_dial": "saturation"})
     await env.fire("cc_016_00", "65")
+    await env.tick(0.3)
     assert env.calls[-1][1]["hs_color"] == [120.0, 45.0]
+
+
+async def test_dial_burst_sends_one_command_in_the_latest_direction(hass, freezer, mqtt_mock):
+    env = await setup(hass, freezer, mqtt_mock, {"strip_1_dial": "colour_temp"})
+    align(env)
+    for payload in ("1", "1", "1", "65"):
+        await env.fire("cc_016_00", payload)
+        await env.tick(0.03)
+    await env.tick(0.3)
+    calls = env.calls_of("light.turn_on")
+    assert len(calls) == 1
+    assert calls[0][1]["color_temp_kelvin"] == 3775
+
+
+async def test_spinning_dial_updates_lights_once_per_interval(hass, freezer, mqtt_mock):
+    env = await setup(hass, freezer, mqtt_mock, {"strip_1_dial": "colour_temp"})
+    align(env)
+    for _ in range(25):                                   # 25 clicks over 1 second (40 ms apart)
+        await env.fire("cc_016_00", "1")
+        await env.tick(0.04)
+    await env.tick(0.3)
+    calls = env.calls_of("light.turn_on")
+    assert 3 <= len(calls) <= 5                           # about one command per 250 ms, not 25
+
+
+async def test_dial_sampling_interval_input_is_honoured(hass, freezer, mqtt_mock):
+    env = await setup(hass, freezer, mqtt_mock, {"strip_1_dial": "colour_temp", "dial_debounce": 500})
+    align(env)
+    await env.fire("cc_016_00", "1")
+    await env.tick(0.3)
+    assert not env.calls_of("light.turn_on")
+    await env.tick(0.3)
+    assert env.calls_of("light.turn_on")[-1][1]["color_temp_kelvin"] == 4225
 
 
 async def test_dial_zero_and_unknown_controllers_are_ignored(env):
@@ -425,6 +468,7 @@ async def test_dial_zero_and_unknown_controllers_are_ignored(env):
     await env.fire("cc_016_00", "64")
     await env.fire("cc_030_00", "1")
     await env.fire("chord_0", "C")
+    await env.tick(0.3)
     assert env.calls == []
 
 

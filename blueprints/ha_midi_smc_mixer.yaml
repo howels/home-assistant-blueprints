@@ -798,6 +798,22 @@ blueprint:
               step: 10
               mode: box
               unit_of_measurement: ms
+        dial_debounce:
+          name: Dial sampling interval
+          description: >-
+            Milliseconds between light updates while a dial turns. Each dial
+            message waits for the next interval boundary and acts only if no
+            newer event has arrived, so a spinning dial sends at most one light
+            command per interval and waits for slow lights such as WLED to
+            report their updated state before stepping again.
+          default: 250
+          selector:
+            number:
+              min: 50
+              max: 1000
+              step: 10
+              mode: box
+              unit_of_measurement: ms
         log_events:
           name: Log events
           description: >-
@@ -917,6 +933,7 @@ variables:
   night_brightness: !input night_brightness
   log_events: !input log_events
   fader_debounce: !input fader_debounce
+  dial_debounce: !input dial_debounce
   strips:
     - targets: !input strip_1_targets
       fader: !input strip_1_fader
@@ -1182,80 +1199,91 @@ actions:
              and (dial_function == 'auto' or dial_function in light_functions) }}
     then:
       - variables:
-          dial_dir: "{{ 1 if payload | int(0) < 64 else -1 }}"
-          dial_ticks: "{{ payload | int(0) % 64 }}"
-          light_function: "{{ 'brightness' if dial_function == 'auto' else dial_function }}"
-          dial_pct: "{{ dial_ticks * dial_dir * light_dial_step }}"
-      - choose:
-          - conditions: "{{ light_function == 'brightness' }}"
-            sequence:
-              - action: light.turn_on
-                continue_on_error: true
-                target:
-                  entity_id: "{{ strip_lights }}"
-                data:
-                  brightness_step_pct: "{{ dial_pct }}"
-                  transition: 0
-        default:
-          - repeat:
-              for_each: "{{ strip_lights }}"
-              sequence:
-                - choose:
-                    - conditions: "{{ light_function == 'colour_temp' }}"
-                      sequence:
-                        - action: light.turn_on
-                          continue_on_error: true
-                          target:
-                            entity_id: "{{ repeat.item }}"
-                          data:
-                            color_temp_kelvin: >-
-                              {% set low = state_attr(repeat.item, 'min_color_temp_kelvin') | int(2000) %}
-                              {% set high = state_attr(repeat.item, 'max_color_temp_kelvin') | int(6500) %}
-                              {# A light reports color_temp_kelvin only in colour temperature mode. An RGB or
-                                 RGBW light does not, so the temperature is recovered from rgb_color by
-                                 inverting the formula that Home Assistant uses to convert kelvin to RGB. #}
-                              {% set measured = state_attr(repeat.item, 'color_temp_kelvin') %}
-                              {% set rgb = state_attr(repeat.item, 'rgb_color') %}
-                              {% if measured is number %}
-                                {% set current = measured %}
-                              {% elif rgb is not none and rgb | length == 3 and rgb | max > 0 %}
-                                {% set top = rgb | max %}
-                                {% set red = [rgb[0] * 255 / top, 1] | max %}
-                                {% set blue = rgb[2] * 255 / top %}
-                                {% if blue >= red %}
-                                  {% set current = 100 * ((red / 329.698727446) ** (-1 / 0.1332047592) + 60) %}
-                                {% else %}
-                                  {% set current = 100 * (e ** ((blue + 305.0447927307) / 138.5177312231) + 10) %}
-                                {% endif %}
-                              {% else %}
-                                {% set current = low %}
-                              {% endif %}
-                              {{ [[current + (high - low) * dial_pct / 100, low] | max, high] | min | round(0) | int }}
-                            transition: 0
-                    - conditions: "{{ light_function == 'hue' }}"
-                      sequence:
-                        - action: light.turn_on
-                          continue_on_error: true
-                          target:
-                            entity_id: "{{ repeat.item }}"
-                          data:
-                            hs_color:
-                              - >-
-                                {{ (((state_attr(repeat.item, 'hs_color') or [0, 100])[0] | float(0) + 3.6 * dial_pct) % 360) | round(1) }}
-                              - "{{ ((state_attr(repeat.item, 'hs_color') or [0, 100])[1]) | float(100) }}"
-                            transition: 0
-                    - conditions: "{{ light_function == 'saturation' }}"
-                      sequence:
-                        - action: light.turn_on
-                          continue_on_error: true
-                          target:
-                            entity_id: "{{ repeat.item }}"
-                          data:
-                            hs_color:
-                              - "{{ ((state_attr(repeat.item, 'hs_color') or [0, 100])[0]) | float(0) }}"
-                              - >-
-                                {{ [[(state_attr(repeat.item, 'hs_color') or [0, 100])[1] | float(100) + dial_pct, 0] | max, 100] | min | round(1) }}
-                            transition: 0
+          dial_run_ts: "{{ as_timestamp(state_attr(this.entity_id, 'last_triggered')) }}"
+      - alias: Wait for the next dial sampling point
+        delay:
+          milliseconds: "{{ dial_debounce - ((as_timestamp(now()) * 1000) | int % dial_debounce) }}"
+      - variables:
+          dial_current: "{{ as_timestamp(state_attr(this.entity_id, 'last_triggered')) == dial_run_ts }}"
+      - if:
+          - condition: template
+            value_template: "{{ dial_current }}"
+        then:
+          - variables:
+              dial_dir: "{{ 1 if payload | int(0) < 64 else -1 }}"
+              dial_ticks: "{{ payload | int(0) % 64 }}"
+              light_function: "{{ 'brightness' if dial_function == 'auto' else dial_function }}"
+              dial_pct: "{{ dial_ticks * dial_dir * light_dial_step }}"
+          - choose:
+              - conditions: "{{ light_function == 'brightness' }}"
+                sequence:
+                  - action: light.turn_on
+                    continue_on_error: true
+                    target:
+                      entity_id: "{{ strip_lights }}"
+                    data:
+                      brightness_step_pct: "{{ dial_pct }}"
+                      transition: 0
+            default:
+              - repeat:
+                  for_each: "{{ strip_lights }}"
+                  sequence:
+                    - choose:
+                        - conditions: "{{ light_function == 'colour_temp' }}"
+                          sequence:
+                            - action: light.turn_on
+                              continue_on_error: true
+                              target:
+                                entity_id: "{{ repeat.item }}"
+                              data:
+                                color_temp_kelvin: >-
+                                  {% set low = state_attr(repeat.item, 'min_color_temp_kelvin') | int(2000) %}
+                                  {% set high = state_attr(repeat.item, 'max_color_temp_kelvin') | int(6500) %}
+                                  {# A light reports color_temp_kelvin only in colour temperature mode. An RGB or
+                                     RGBW light does not, so the temperature is recovered from rgb_color by
+                                     inverting the formula that Home Assistant uses to convert kelvin to RGB. #}
+                                  {% set measured = state_attr(repeat.item, 'color_temp_kelvin') %}
+                                  {% set rgb = state_attr(repeat.item, 'rgb_color') %}
+                                  {% if measured is number %}
+                                    {% set current = measured %}
+                                  {% elif rgb is not none and rgb | length == 3 and rgb | max > 0 %}
+                                    {% set top = rgb | max %}
+                                    {% set red = [rgb[0] * 255 / top, 1] | max %}
+                                    {% set blue = rgb[2] * 255 / top %}
+                                    {% if blue >= red %}
+                                      {% set current = 100 * ((red / 329.698727446) ** (-1 / 0.1332047592) + 60) %}
+                                    {% else %}
+                                      {% set current = 100 * (e ** ((blue + 305.0447927307) / 138.5177312231) + 10) %}
+                                    {% endif %}
+                                  {% else %}
+                                    {% set current = low %}
+                                  {% endif %}
+                                  {{ [[current + (high - low) * dial_pct / 100, low] | max, high] | min | round(0) | int }}
+                                transition: 0
+                        - conditions: "{{ light_function == 'hue' }}"
+                          sequence:
+                            - action: light.turn_on
+                              continue_on_error: true
+                              target:
+                                entity_id: "{{ repeat.item }}"
+                              data:
+                                hs_color:
+                                  - >-
+                                    {{ (((state_attr(repeat.item, 'hs_color') or [0, 100])[0] | float(0) + 3.6 * dial_pct) % 360) | round(1) }}
+                                  - "{{ ((state_attr(repeat.item, 'hs_color') or [0, 100])[1]) | float(100) }}"
+                                transition: 0
+                        - conditions: "{{ light_function == 'saturation' }}"
+                          sequence:
+                            - action: light.turn_on
+                              continue_on_error: true
+                              target:
+                                entity_id: "{{ repeat.item }}"
+                              data:
+                                hs_color:
+                                  - "{{ ((state_attr(repeat.item, 'hs_color') or [0, 100])[0]) | float(0) }}"
+                                  - >-
+                                    {{ [[(state_attr(repeat.item, 'hs_color') or [0, 100])[1] | float(100) + dial_pct, 0] | max, 100] | min | round(1) }}
+                                transition: 0
 
   - alias: Dial and Up and Down keys step media player volume
     if:

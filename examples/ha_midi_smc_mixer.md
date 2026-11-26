@@ -51,16 +51,17 @@ Faders and dials change volume at different speeds in each direction.
 
 A fader ramps in steps of half a second. The ramp starts when the fader has been still for `fader_debounce` (default 100 ms), so a drag produces one ramp from the final position. A new position stops the ramp in progress. The blueprint compares the fader position with the fader `number` entity of the device at every step. A ramp that finds a different position ends.
 
-## Fader sampling
+## Fader and dial sampling
 
-A fader sends one MQTT message for each step of its travel, several per 100 ms. Light services and slow lights such as WLED cannot follow that rate, and the commands arrive late and in a burst. `fader_debounce` (Fader sampling interval, default 100 ms, in the advanced section) limits the rate.
+A fader or dial sends one MQTT message for each step of its travel, faster than slow lights such as WLED can follow. Without rate limiting, concurrent `light.turn_on` calls queue up on the light, fill the automation's parallel run limit (`max: 60`), and step from stale light state. `fader_debounce` (default 100 ms) and `dial_debounce` (default 250 ms) in the advanced section limit the rate.
 
-| Target | Behaviour |
-|----|----|
-| Lights | Each message waits for the next `fader_debounce` boundary of the clock. It then acts only if it is still the latest position, read from the fader `number` entity. A moving fader sends at most one command per interval and the lights follow the hand. A fader that stops sends its final position within one interval. |
-| Media players | Each message waits `fader_debounce` and acts only if it is still the latest position. A drag therefore starts one ramp. |
+| Control | Target | Behaviour |
+|----|----|----|
+| Fader | Lights | Each message waits for the next `fader_debounce` boundary of the clock and acts only if it is still the latest position, read from the fader `number` entity. |
+| Fader | Media players | Each message waits `fader_debounce` and acts only if it is still the latest position. A drag therefore starts one ramp. |
+| Dial | Lights | Each message waits for the next `dial_debounce` boundary of the clock and acts only if no newer trigger has arrived. A spinning dial sends at most one light command per interval, giving WLED time to report its updated state before the next step. |
 
-If the device has no fader `number` entity, every message acts and nothing is skipped.
+If the device has no fader `number` entity, every fader message acts and nothing is skipped.
 
 `max_volume` limits every control. A fader at the top sets the maximum. A player already above the maximum is not raised by a dial and can still be lowered.
 
