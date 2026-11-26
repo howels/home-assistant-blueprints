@@ -86,8 +86,8 @@ blueprint:
         room_name:
           name: Room name
           description: >-
-            Names the runtime scene and the saved record. Study gives
-            scene.study_scene_tmp. The name is converted to a slug.
+            Names the runtime scene and the saved record. Room gives
+            scene.room_scene_tmp. The name is converted to a slug.
           selector:
             text: {}
         snapshot_entities:
