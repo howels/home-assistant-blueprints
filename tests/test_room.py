@@ -424,3 +424,63 @@ async def test_unavailable_lights_at_entry_retry_on_next_entry(hass, freezer):
     assert env.s("light.lamp_ct").attributes["brightness"] == 200
     assert env.store["study"]["vacated"] is False
     assert env.store["study"]["snapshot"]["light.lamp_ct"]["brightness"] == 200
+
+
+async def test_single_unavailable_sensor_does_not_vacate(hass, freezer):
+    env = await build(hass, freezer)
+    await enter_default(env)
+    await env.setsensor(W, "on")
+    await env.setsensor(M, "off")
+    await env.setsensor(W, "unavailable")
+    await env.tick(120)
+    assert env.s("light.lamp_ct").state == "on"
+    assert env.store["study"]["vacated"] is False
+    await env.setsensor(W, "off")
+    await env.tick(29)
+    assert env.s("light.lamp_ct").state == "on"
+    await env.tick(2)
+    assert env.s("light.lamp_ct").state == "off"
+    assert env.store["study"]["vacated"] is True
+
+
+async def test_recheck_does_not_vacate_when_one_sensor_unavailable(hass, freezer):
+    import datetime as dt
+    from homeassistant.util import dt as dt_util
+    from pytest_homeassistant_custom_component.common import async_fire_time_changed
+    tz = dt_util.get_default_time_zone()
+    freezer.move_to(dt.datetime(2026, 11, 24, 12, 0, 30, tzinfo=tz))
+    env = await build(hass, freezer, restore=raw_record({"study": {"snapshot": {}, "saved_at": "", "vacated": False}}))
+    await hass.services.async_call("light", "turn_on", {"entity_id": "light.lamp_ct", "brightness": 120}, blocking=True)
+    await env.setsensor(W, "unavailable")
+    freezer.move_to(dt.datetime(2026, 11, 24, 12, 10, 0, 500000, tzinfo=tz))
+    async_fire_time_changed(hass)
+    await env.pump()
+    assert env.s("light.lamp_ct").state == "on"
+    assert env.store["study"]["vacated"] is False
+
+
+@pytest.mark.parametrize("bad_state", ["unavailable", "unknown"])
+async def test_rebooting_sensor_does_not_trigger_entry(hass, freezer, bad_state):
+    env = await build(hass, freezer)
+    await env.setsensor(M, bad_state)
+    await env.tick(1)
+    await env.setsensor(M, "on")
+    await env.tick(2)
+    assert env.s("light.lamp_ct").state == "off"
+    assert env.store == {}
+    await env.setsensor(M, "off")
+    await env.tick(1)
+    await env.setsensor(M, "on")
+    await env.tick(2)
+    assert env.s("light.lamp_ct").state == "on"
+    assert env.store["study"]["vacated"] is False
+
+
+async def test_unavailable_sensor_does_not_block_other_entry_sensor(hass, freezer):
+    env = await build(hass, freezer, inputs={"sensors": [M, W], "hold_only_sensors": []})
+    await env.setsensor(W, "unavailable")
+    await env.setsensor(M, "on")
+    await env.tick(2)
+    assert env.s("light.lamp_ct").state == "on"
+    assert env.store["study"]["vacated"] is False
+

@@ -9,28 +9,28 @@ blueprint:
     room.
 
 
-    Entry. An entry occurs when an entry sensor is on while the saved record
-    says the room is vacated, that is, when a sensor turns on, or when a vacancy
-    run sets vacated while a sensor is already on. It restores the lights only
-    if the time is inside the active hours, at least one selected person is
-    home, and the extra entry conditions pass. If a snapshot is saved for the
-    room, scene.apply applies it. Otherwise, if the runtime scene
-    scene.<room>_scene_tmp exists, it is turned on. Otherwise the default scene
-    is turned on, and after the settle time the room is snapshotted into
-    scene.<room>_scene_tmp. The room counts as restored only if a light, switch
-    or fan among the entities to save is on within 5 seconds. If not, for
-    example because the lights were unavailable, vacated stays true and the next
-    entry tries again. An entry refused by the hours or the people check is
-    tried again when the active hours open and when a selected person arrives
-    home, if a sensor is on then.
+    Entry. An entry occurs when an entry sensor changes from off to on while
+    the saved record says the room is vacated. Transitions from unavailable or
+    unknown are ignored, so a rebooting sensor does not trigger entry. It
+    restores the lights only if the time is inside the active hours, at least
+    one selected person is home, and the extra entry conditions pass. If a
+    snapshot is saved for the room, scene.apply applies it. Otherwise, if the
+    runtime scene scene.<room>_scene_tmp exists, it is turned on. Otherwise the
+    default scene is turned on, and after the settle time the room is
+    snapshotted into scene.<room>_scene_tmp. The room counts as restored only
+    if a light, switch or fan among the entities to save is on within 5
+    seconds. If not, for example because the lights were unavailable, vacated
+    stays true and the next entry tries again. An entry refused by the hours or
+    the people check is tried again when the active hours open and when a
+    selected person arrives home, if a sensor is on then.
 
 
-    Vacancy. When no entry sensor and no hold-only sensor is on, and at least
-    one reports off, for the clear delay, the automation reads the states of the
-    snapshot entities. If any light, switch or fan among them is on and the
-    snapshot conditions pass, it saves those states, recreates
-    scene.<room>_scene_tmp from them, and turns the lights off. The extra
-    vacant actions run last.
+    Vacancy. When every entry sensor and hold-only sensor reports off for the
+    clear delay, the automation reads the states of the snapshot entities. If
+    any sensor is unavailable or unknown, the room does not vacate. If any
+    light, switch or fan among the snapshot entities is on and the snapshot
+    conditions pass, it saves those states, recreates scene.<room>_scene_tmp
+    from them, and turns the lights off. The extra vacant actions run last.
 
 
     Why the order holds. The automation runs in queued mode. A second entry
@@ -257,27 +257,23 @@ trigger_variables:
   entry_sensors: !input sensors
   hold_sensors: !input hold_only_sensors
   people: !input people
-  store: !input store
-  room_name: !input room_name
 
 triggers:
-  # An entry sensor is on while the saved record says the room is vacated. The
-  # edge occurs when a sensor turns on, and when a vacancy run sets vacated
-  # while a sensor is already on. With no saved record vacated counts as true.
-  - trigger: template
+  # An entry sensor transitions from off to on. Transitions from unavailable or
+  # unknown (for example after a sensor reboot) are ignored.
+  - trigger: state
     id: enter
-    value_template: >-
-      {% set rec = (state_attr(store, 'rooms') or {}).get(room_name | slugify) or {} %}
-      {{ rec.get('vacated', true)
-         and entry_sensors | select('is_state', 'on') | list | count > 0 }}
-  # No sensor on and at least one reporting off, for the clear delay. A sensor
-  # that is unavailable counts as neither, so it cannot make the room vacant.
+    entity_id: !input sensors
+    from: "off"
+    to: "on"
+  # Every watched sensor reports off for the clear delay. If any sensor is
+  # unavailable or unknown, the room does not vacate.
   - trigger: template
     id: vacate
     value_template: >-
       {% set watched = entry_sensors + hold_sensors %}
-      {{ watched | select('is_state', 'on') | list | count == 0
-         and watched | select('is_state', 'off') | list | count > 0 }}
+      {{ watched | count > 0
+         and watched | select('is_state', 'off') | list | count == watched | count }}
     for: !input clear_delay
   # Entry is refused outside the active hours or with nobody home. Check again
   # when the hours open and when someone arrives.
@@ -322,11 +318,12 @@ variables:
   # the recheck filter below uses it. The run recomputes everything it acts on.
   missed_vacancy: >-
     {% set rec = (state_attr(store, 'rooms') or {}).get(room) or {} %}
-    {% set st = expand(entry_sensors + hold_sensors) %}
+    {% set watched = entry_sensors + hold_sensors %}
+    {% set st = expand(watched) %}
     {% set off = st | selectattr('state', 'eq', 'off') | list %}
     {{ not rec.get('vacated', true)
-       and st | selectattr('state', 'eq', 'on') | list | count == 0
-       and off | count > 0
+       and watched | count > 0
+       and off | count == watched | count
        and (now() - (off | map(attribute='last_changed') | max)).total_seconds() >= clear_seconds }}
 
 conditions:
@@ -343,11 +340,13 @@ actions:
       entry_on: "{{ entry_sensors | select('is_state', 'on') | list | count > 0 }}"
       all_clear: >-
         {% set watched = entry_sensors + hold_sensors %}
-        {{ watched | select('is_state', 'on') | list | count == 0
-           and watched | select('is_state', 'off') | list | count > 0 }}
+        {{ watched | count > 0
+           and watched | select('is_state', 'off') | list | count == watched | count }}
       clear_age: >-
-        {% set off = expand(entry_sensors + hold_sensors) | selectattr('state', 'eq', 'off') | list %}
-        {{ (now() - (off | map(attribute='last_changed') | max)).total_seconds() if off else 0 }}
+        {% set watched = entry_sensors + hold_sensors %}
+        {% set off = expand(watched) | selectattr('state', 'eq', 'off') | list %}
+        {{ (now() - (off | map(attribute='last_changed') | max)).total_seconds()
+           if watched | count > 0 and off | count == watched | count else 0 }}
   - choose:
       # Recreate scene.<room>_scene_tmp for other automations.
       - alias: Recreate the runtime scene from the saved snapshot
