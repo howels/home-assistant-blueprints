@@ -185,14 +185,17 @@ async def test_fader_colour_temp_via_rgb(hass, freezer, mqtt_mock):
     env = await setup(hass, freezer, mqtt_mock, {"strip_1_fader": "colour_temp_rgb"})
     await env.fire("pb_0", "0")
     await env.tick(0.2)
-    assert env.calls[-1][1]["rgb_color"] == [255, 137, 14]
+    assert env.calls[-1][1]["rgb_color"] == [255, 115, 0]
     assert "color_temp_kelvin" not in env.calls[-1][1]
+    await env.fire("pb_0", "20")
+    await env.tick(0.2)
+    assert env.calls[-1][1]["rgb_color"] == [255, 158, 45]
     await env.fire("pb_0", "50")
     await env.tick(0.2)
-    assert env.calls[-1][1]["rgb_color"] == [255, 212, 177]
+    assert env.calls[-1][1]["rgb_color"] == [255, 188, 118]
     await env.fire("pb_0", "100")
     await env.tick(0.2)
-    assert env.calls[-1][1]["rgb_color"] == [255, 254, 250]
+    assert env.calls[-1][1]["rgb_color"] == [215, 242, 255]
 
 
 async def test_fader_saturation_keeps_hue(hass, freezer, mqtt_mock):
@@ -431,26 +434,29 @@ async def test_dial_colour_temperature_without_any_reading_starts_warm(hass, fre
 
 
 async def test_dial_colour_temperature_via_rgb(hass, freezer, mqtt_mock):
-    """colour_temp_rgb sends rgb_color even when the light supports color_temp."""
-    from homeassistant.util import color as color_util
-
-    rgb_3000 = [round(c) for c in color_util.color_temperature_to_rgb(3000)]
+    """colour_temp_rgb sends rgb_color even when the light supports color_temp, stepping cleanly on both sides."""
+    warm = [255, 180, 95]                                 # p = 0.40 on the orange-steered curve
     states = {
         "light.lamp": ("on", {"supported_color_modes": ["color_temp", "rgb"], "color_mode": "rgb",
                               "min_color_temp_kelvin": 2000, "max_color_temp_kelvin": 6500,
-                              "rgb_color": rgb_3000}),
+                              "rgb_color": warm}),
     }
     env = await setup(hass, freezer, mqtt_mock, {"strip_1_dial": "colour_temp_rgb"}, light_state=states)
-    await env.fire("cc_016_00", "1")                      # clockwise: colder (more blue)
+    await env.fire("cc_016_00", "1")                      # clockwise: colder (p = 0.45)
     await env.tick(0.3)
     call = env.calls[-1][1]
     assert "color_temp_kelvin" not in call
-    assert call["rgb_color"][2] > rgb_3000[2]
-    await env.fire("cc_016_00", "65")                     # anticlockwise: warmer (less blue)
+    assert call["rgb_color"] == [255, 184, 106]
+    await env.fire("cc_016_00", "65")                     # anticlockwise: warmer (p = 0.35)
     await env.tick(0.3)
     call = env.calls[-1][1]
     assert "color_temp_kelvin" not in call
-    assert call["rgb_color"][2] < rgb_3000[2]
+    assert call["rgb_color"] == [255, 174, 82]
+
+    hass.states.async_set("light.lamp", "on", {**states["light.lamp"][1], "rgb_color": [215, 242, 255]})
+    await env.fire("cc_016_00", "65")                     # cool end stepping warmer (p = 0.95)
+    await env.tick(0.3)
+    assert env.calls[-1][1]["rgb_color"] == [235, 246, 255]
 
 
 async def test_dial_hue_and_saturation(hass, freezer, mqtt_mock):

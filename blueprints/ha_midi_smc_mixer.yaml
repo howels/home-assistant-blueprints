@@ -994,6 +994,14 @@ variables:
   record_players: "{{ record_players_input if record_players_input | length > 0 else media_players }}"
   ramp_interval: 0.5
   light_functions: [brightness, colour_temp, colour_temp_rgb, hue, saturation]
+  rgb_temp_stops:
+    - [0.00, 255, 115, 0]
+    - [0.20, 255, 158, 45]
+    - [0.40, 255, 180, 95]
+    - [0.60, 255, 196, 140]
+    - [0.85, 255, 242, 238]
+    - [0.90, 255, 250, 255]
+    - [1.00, 215, 242, 255]
   transport_keys:
     - rewind
     - fast_forward
@@ -1141,15 +1149,22 @@ actions:
                             entity_id: "{{ repeat.item }}"
                           data:
                             rgb_color: >-
-                              {% set low = state_attr(repeat.item, 'min_color_temp_kelvin') | int(2000) %}
-                              {% set high = state_attr(repeat.item, 'max_color_temp_kelvin') | int(6500) %}
-                              {% set t = (low + (high - low) * fader_value / 100) / 100.0 %}
-                              {% set r = 255 if t <= 66 else 329.698727446 * ((t - 60) ** -0.1332047592) %}
-                              {% set g = (99.4708025861 * (t | log) - 161.1195681661) if t <= 66 else (288.1221695283 * ((t - 60) ** -0.0755148492)) %}
-                              {% set b = 255 if t >= 66 else (0 if t <= 19 else (138.5177312231 * ((t - 10) | log) - 305.0447927307)) %}
-                              {{ [ [[r, 0] | max, 255] | min | round(0) | int,
-                                   [[g, 0] | max, 255] | min | round(0) | int,
-                                   [[b, 0] | max, 255] | min | round(0) | int ] }}
+                              {% set p = [[fader_value / 100.0, 0.0] | max, 1.0] | min %}
+                              {% set ns = namespace(rgb=[rgb_temp_stops[-1][1], rgb_temp_stops[-1][2], rgb_temp_stops[-1][3]], done=false) %}
+                              {% for i in range(rgb_temp_stops | length - 1) %}
+                                {% set a = rgb_temp_stops[i] %}
+                                {% set b = rgb_temp_stops[i + 1] %}
+                                {% if not ns.done and p <= b[0] %}
+                                  {% set f = (p - a[0]) / (b[0] - a[0]) %}
+                                  {% set ns.rgb = [
+                                    (a[1] + (b[1] - a[1]) * f) | round(0) | int,
+                                    (a[2] + (b[2] - a[2]) * f) | round(0) | int,
+                                    (a[3] + (b[3] - a[3]) * f) | round(0) | int
+                                  ] %}
+                                  {% set ns.done = true %}
+                                {% endif %}
+                              {% endfor %}
+                              {{ ns.rgb }}
                             transition: 0
                     - conditions: "{{ light_function == 'hue' }}"
                       sequence:
@@ -1318,31 +1333,42 @@ actions:
                                 entity_id: "{{ repeat.item }}"
                               data:
                                 rgb_color: >-
-                                  {% set low = state_attr(repeat.item, 'min_color_temp_kelvin') | int(2000) %}
-                                  {% set high = state_attr(repeat.item, 'max_color_temp_kelvin') | int(6500) %}
                                   {% set rgb = state_attr(repeat.item, 'rgb_color') %}
-                                  {% set measured = state_attr(repeat.item, 'color_temp_kelvin') %}
+                                  {% set ns = namespace(p=0.0, done=false) %}
                                   {% if rgb is not none and rgb | length == 3 and rgb | max > 0 %}
                                     {% set top = rgb | max %}
-                                    {% set red = [rgb[0] * 255 / top, 1] | max %}
-                                    {% set blue = rgb[2] * 255 / top %}
+                                    {% set red = rgb[0] * 255.0 / top %}
+                                    {% set blue = rgb[2] * 255.0 / top %}
                                     {% if blue >= red %}
-                                      {% set current = 100 * ((red / 329.698727446) ** (-1 / 0.1332047592) + 60) %}
+                                      {% set ns.p = [0.90 + 0.10 * (255.0 - red) / 40.0, 1.0] | min %}
                                     {% else %}
-                                      {% set current = 100 * (e ** ((blue + 305.0447927307) / 138.5177312231) + 10) %}
+                                      {% for i in range(rgb_temp_stops | length - 2) %}
+                                        {% set a = rgb_temp_stops[i] %}
+                                        {% set b = rgb_temp_stops[i + 1] %}
+                                        {% if not ns.done and blue <= b[3] %}
+                                          {% set ns.p = a[0] + (b[0] - a[0]) * (blue - a[3]) / (b[3] - a[3]) %}
+                                          {% set ns.done = true %}
+                                        {% endif %}
+                                      {% endfor %}
+                                      {% if not ns.done %}{% set ns.p = 0.90 %}{% endif %}
                                     {% endif %}
-                                  {% elif measured is number %}
-                                    {% set current = measured %}
-                                  {% else %}
-                                    {% set current = low %}
                                   {% endif %}
-                                  {% set t = ([[current + (high - low) * dial_pct / 100, low] | max, high] | min) / 100.0 %}
-                                  {% set r = 255 if t <= 66 else 329.698727446 * ((t - 60) ** -0.1332047592) %}
-                                  {% set g = (99.4708025861 * (t | log) - 161.1195681661) if t <= 66 else (288.1221695283 * ((t - 60) ** -0.0755148492)) %}
-                                  {% set b = 255 if t >= 66 else (0 if t <= 19 else (138.5177312231 * ((t - 10) | log) - 305.0447927307)) %}
-                                  {{ [ [[r, 0] | max, 255] | min | round(0) | int,
-                                       [[g, 0] | max, 255] | min | round(0) | int,
-                                       [[b, 0] | max, 255] | min | round(0) | int ] }}
+                                  {% set p = [[ns.p + dial_pct / 100.0, 0.0] | max, 1.0] | min %}
+                                  {% set out = namespace(rgb=[rgb_temp_stops[-1][1], rgb_temp_stops[-1][2], rgb_temp_stops[-1][3]], done=false) %}
+                                  {% for i in range(rgb_temp_stops | length - 1) %}
+                                    {% set a = rgb_temp_stops[i] %}
+                                    {% set b = rgb_temp_stops[i + 1] %}
+                                    {% if not out.done and p <= b[0] %}
+                                      {% set f = (p - a[0]) / (b[0] - a[0]) %}
+                                      {% set out.rgb = [
+                                        (a[1] + (b[1] - a[1]) * f) | round(0) | int,
+                                        (a[2] + (b[2] - a[2]) * f) | round(0) | int,
+                                        (a[3] + (b[3] - a[3]) * f) | round(0) | int
+                                      ] %}
+                                      {% set out.done = true %}
+                                    {% endif %}
+                                  {% endfor %}
+                                  {{ out.rgb }}
                                 transition: 0
                         - conditions: "{{ light_function == 'hue' }}"
                           sequence:
