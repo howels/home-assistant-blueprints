@@ -35,7 +35,7 @@ Home Assistant blueprints by howels.
 ## Install LedFX playback
 
 1. In Home Assistant, open Settings > Automations & scenes > Blueprints > Import blueprint. Enter `https://github.com/howels/home-assistant-blueprints/blob/main/blueprints/ledfx_playback.yaml`.
-2. Create one automation per room. Each input description gives a generic example.
+2. Create one automation per room. Set Room name to the same name as that room's occupancy automation. The entities saved are the occupancy automation's list, published in the store.
 3. If another automation already plays or pauses the same LedFX player, disable it first. Both would pause LedFX and restore the room.
 4. Create an `input_boolean` per room and select it as the session helper. The helper stops a second snapshot if playback returns while LedFX is settling.
 

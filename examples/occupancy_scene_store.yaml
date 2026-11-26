@@ -4,8 +4,9 @@
 # template entities (Developer tools > YAML) or restart Home Assistant.
 #
 # The room_occupancy blueprint fires occupancy_room_update with data room
-# (slug), and optionally snapshot, saved_at and vacated. Each event replaces
-# those fields for that room and leaves the others unchanged.
+# (slug), and optionally snapshot, saved_at, vacated and entities. Each event
+# replaces those fields for that room and leaves the others unchanged.
+# entities is the list edited on the occupancy automation. LedFX reads it.
 #
 # Home Assistant restores the state and attributes of a trigger-based template
 # sensor after a restart, so the saved rooms survive it. It writes restore data
@@ -26,9 +27,12 @@
           {% set d = trigger.event.data %}
           {% set rooms = this.attributes.get('rooms') or {} %}
           {% set old = rooms.get(d.room) or {} %}
+          {% set raw_ents = d.entities if 'entities' in d else old.get('entities', []) %}
+          {% set ents = [raw_ents] if raw_ents is string else raw_ents %}
           {% set new = {
             'snapshot': d.get('snapshot', {}) if 'snapshot' in d else old.get('snapshot', {}),
             'saved_at': d.get('saved_at', '') if 'snapshot' in d else old.get('saved_at', ''),
-            'vacated': d.get('vacated', true) if 'vacated' in d else old.get('vacated', true)
+            'vacated': d.get('vacated', true) if 'vacated' in d else old.get('vacated', true),
+            'entities': ents
           } %}
           {{ rooms | combine({d.room: new}) }}

@@ -78,13 +78,14 @@ blueprint:
 
     Example. Link media_player.room_speaker to media_player.room_ledfx. Turn
     on switch.led_supply when playback starts, and turn it off on stop if the
-    supply should drop with the music. Call script.snapshot_room before
-    LedFX plays, press button.ledfx_preset, turn light.led_strip off and on,
-    and turn on light.accent. Restore scene.room_saved when playback stops.
-    Suspend automation.room_motion while the session is open. A second
-    speaker, media_player.room_speaker_2, can be added to the same list.
-    LedFX then starts when either speaker plays, and stops only when both
-    have stopped.
+    supply should drop with the music. Set the room name to the occupancy
+    automation's room name. The entities saved are that automation's list,
+    read from the occupancy store, and the scene is scene.<slug>_scene_tmp.
+    Press button.ledfx_preset, turn light.led_strip off and on, and turn on
+    light.accent. Suspend automation.room_motion while the session is open.
+    A second speaker, media_player.room_speaker_2, can be added to the same
+    list. LedFX then starts when either speaker plays, and stops only when
+    both have stopped.
   input:
     players_section:
       name: Players
@@ -250,11 +251,34 @@ blueprint:
               multiple: true
               filter:
                 - domain: light
+        room_name:
+          name: Room name
+          description: >-
+            Same room name as the room occupancy automation. The entity list
+            is read from that room's entities field in the occupancy store.
+            Edit the list on the occupancy automation. A name Room snapshots
+            scene.room_scene_tmp before LedFX plays, and turns that scene on
+            when playback stops. The snapshot is skipped when no light,
+            switch, or fan in the list is on. Leave empty to skip it.
+          default: ""
+          selector:
+            text: {}
+        snapshot_store:
+          name: Occupancy store
+          description: >-
+            Store sensor the room occupancy blueprint writes. The room
+            record's entities field is the list that is saved.
+          default: sensor.occupancy_scene_store
+          selector:
+            entity:
+              filter:
+                - domain: sensor
         ledfx_start_actions:
           name: LedFX start actions
           description: >-
-            Run once when a session opens, before LedFX is played. Use this
-            to snapshot the room, for example a call to script.snapshot_room.
+            Run once when a session opens, after the occupancy snapshot and
+            before LedFX is played. The room name field saves the shared
+            entity list. Use this for anything else that has to happen first.
           default: []
           selector:
             action: {}
@@ -368,6 +392,9 @@ variables:
   power_off_on_stop: !input power_off_on_stop
   sync_on_start: !input sync_on_start
   watchdog: !input watchdog
+  room_name: !input room_name
+  room_slug: "{{ room_name | slugify }}"
+  snapshot_store: !input snapshot_store
   session_on: "{{ session_entity | length > 0 and is_state(session_entity, 'on') }}"
   music_playing: >-
     {% set ps = players if players is sequence and players is not string else [players] %}
@@ -516,6 +543,61 @@ actions:
                           entity_id: !input suspend_automations
                         data:
                           stop_actions: true
+                  - alias: Snapshot the occupancy entity list
+                    if:
+                      - condition: template
+                        value_template: "{{ room_slug | length > 0 }}"
+                    then:
+                      - variables:
+                          room_entities: >-
+                            {% set rooms = state_attr(snapshot_store, 'rooms') or {} %}
+                            {% set raw = (rooms.get(room_slug) or {}).get('entities') or [] %}
+                            {{ raw if raw is sequence and raw is not string else ([raw] if raw else []) }}
+                          room_active: >-
+                            {% set ents = room_entities if room_entities is sequence and room_entities is not string else [] %}
+                            {{ ents | select('match', '^(light|switch|fan)[.]') | select('is_state', 'on') | list | count > 0 }}
+                      - if:
+                          - condition: template
+                            value_template: "{{ room_active }}"
+                        then:
+                          - variables:
+                              room_snapshot: >-
+                                {% set ents = room_entities if room_entities is sequence and room_entities is not string else [] %}
+                                {% set colour = {'color_temp': 'color_temp_kelvin', 'hs': 'hs_color',
+                                                 'rgb': 'rgb_color', 'rgbw': 'rgbw_color',
+                                                 'rgbww': 'rgbww_color', 'xy': 'xy_color'} %}
+                                {% set ns = namespace(all={}) %}
+                                {% for e in ents %}
+                                  {% set st = states(e) %}
+                                  {% if st not in ['unavailable', 'unknown'] %}
+                                    {% set mode = state_attr(e, 'color_mode') %}
+                                    {% set keep = ['brightness', 'effect', 'color_mode', 'percentage', 'preset_mode']
+                                                  + ([colour[mode]] if mode in colour else []) %}
+                                    {% set item = namespace(v={'state': st}) %}
+                                    {% for k in keep %}
+                                      {% set v = state_attr(e, k) %}
+                                      {% if v is not none %}
+                                        {% set item.v = item.v | combine({k: v}) %}
+                                      {% endif %}
+                                    {% endfor %}
+                                    {% set ns.all = ns.all | combine({e: item.v}) %}
+                                  {% endif %}
+                                {% endfor %}
+                                {{ ns.all }}
+                          - if:
+                              - condition: template
+                                value_template: "{{ room_snapshot is mapping and room_snapshot | length > 0 }}"
+                            then:
+                              - action: scene.create
+                                continue_on_error: true
+                                data:
+                                  scene_id: "{{ room_slug }}_scene_tmp"
+                                  entities: "{{ room_snapshot }}"
+                              - event: occupancy_room_update
+                                event_data:
+                                  room: "{{ room_slug }}"
+                                  snapshot: "{{ room_snapshot }}"
+                                  saved_at: "{{ now().isoformat() }}"
                   - alias: Snapshot the room before LedFX
                     continue_on_error: true
                     sequence: !input ledfx_start_actions
@@ -656,6 +738,16 @@ actions:
                 continue_on_error: true
                 target:
                   entity_id: !input lights_off
+          - alias: Restore the occupancy scene
+            if:
+              - condition: template
+                value_template: >-
+                  {{ room_slug | length > 0 and state_attr('scene.' ~ room_slug ~ '_scene_tmp', 'entity_id') is not none }}
+            then:
+              - action: scene.turn_on
+                continue_on_error: true
+                target:
+                  entity_id: "scene.{{ room_slug }}_scene_tmp"
           - alias: Restore the room
             if:
               - condition: template

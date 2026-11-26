@@ -484,3 +484,24 @@ async def test_unavailable_sensor_does_not_block_other_entry_sensor(hass, freeze
     assert env.s("light.lamp_ct").state == "on"
     assert env.store["study"]["vacated"] is False
 
+
+async def test_publishes_the_entity_list(hass, freezer):
+    env = await build(hass, freezer)
+    hass.bus.async_fire("automation_reloaded")
+    await env.pump()
+    assert env.store["study"]["entities"] == [
+        "light.lamp_ct", "light.lamp_hs", "light.lamp_bri", "input_select.preset",
+    ]
+    assert env.store["study"]["snapshot"] == {}
+    assert env.store["study"]["vacated"] is True
+
+    await enter_default(env)
+    await customise(env)
+    await leave(env)
+    assert env.store["study"]["snapshot"]["light.lamp_ct"]["brightness"] == 200
+    hass.bus.async_fire("automation_reloaded")
+    await env.pump()
+    assert env.store["study"]["entities"][0] == "light.lamp_ct"
+    assert env.store["study"]["snapshot"]["light.lamp_ct"]["brightness"] == 200
+    assert env.store["study"]["vacated"] is True
+

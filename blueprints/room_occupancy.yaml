@@ -63,8 +63,12 @@ blueprint:
     event occupancy_room_update. A trigger-based template sensor
     (sensor.occupancy_scene_store by default, defined in configuration.yaml)
     keeps them in its attributes and Home Assistant restores them after a
-    restart. On Home Assistant start, and after scene.reload, the automation
-    recreates scene.<room>_scene_tmp from the saved snapshot. Home Assistant
+    restart. The entity list is stored on the same record, as entities.
+    It is written when Home Assistant starts and when automations reload,
+    from Entities to save and restore on this automation. LedFX playback
+    reads that list, so the entities are edited here only. On Home Assistant
+    start, and after scene.reload, the automation recreates
+    scene.<room>_scene_tmp from the saved snapshot. Home Assistant
     writes restored state to disk every 15 minutes and on a clean stop, so a
     power loss can lose the last 15 minutes of changes. Without the store sensor
     the automation still works but forgets everything at restart, and every
@@ -91,7 +95,9 @@ blueprint:
           description: >-
             Lights, switches, fans, selects (for example WLED presets) and
             numbers. Do not list groups. Entities that do not exist or are
-            unavailable are skipped when saving.
+            unavailable are skipped when saving. This list is published to
+            the store for the room. LedFX playback snapshots these entities
+            and no others.
           selector:
             entity:
               multiple: true
@@ -296,6 +302,11 @@ triggers:
   - trigger: event
     event_type: scene_reloaded
     id: restore_scene
+  # Republish the entity list after an automation reload. The list is the
+  # snapshot_entities input. LedFX reads the published copy.
+  - trigger: event
+    event_type: automation_reloaded
+    id: publish_entities
 
 variables:
   room_name: !input room_name
@@ -348,18 +359,35 @@ actions:
         {{ (now() - (off | map(attribute='last_changed') | max)).total_seconds()
            if watched | count > 0 and off | count == watched | count else 0 }}
   - choose:
-      # Recreate scene.<room>_scene_tmp for other automations.
-      - alias: Recreate the runtime scene from the saved snapshot
+      # Publish the entity list, then recreate scene.<room>_scene_tmp when a
+      # snapshot is already saved. The list event does not include snapshot
+      # or vacated, so those fields stay as they were.
+      - alias: Home Assistant started or scenes reloaded
         conditions:
           - condition: trigger
             id: restore_scene
-          - condition: template
-            value_template: "{{ saved | length > 0 }}"
         sequence:
-          - action: scene.create
-            data:
-              scene_id: "{{ scene_id }}"
-              entities: "{{ saved }}"
+          - event: occupancy_room_update
+            event_data:
+              room: "{{ room }}"
+              entities: "{{ snapshot_entities }}"
+          - if:
+              - condition: template
+                value_template: "{{ saved | length > 0 }}"
+            then:
+              - action: scene.create
+                data:
+                  scene_id: "{{ scene_id }}"
+                  entities: "{{ saved }}"
+      - alias: Publish the entity list
+        conditions:
+          - condition: trigger
+            id: publish_entities
+        sequence:
+          - event: occupancy_room_update
+            event_data:
+              room: "{{ room }}"
+              entities: "{{ snapshot_entities }}"
 
       # Someone is in a room that the vacancy run emptied.
       - alias: Entry

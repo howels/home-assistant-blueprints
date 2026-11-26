@@ -89,6 +89,7 @@ def record(hass):
         ("light", "turn_off"),
         ("button", "press"),
         ("scene", "turn_on"),
+        ("scene", "create"),
         ("test", "note"),
     ):
         hass.services.async_register(domain, service, handler)
@@ -460,3 +461,55 @@ async def test_unavailable_ledfx_is_left_alone_when_the_ready_time_is_zero(hass,
     assert not saw("test", "note", step="snapshot")
     assert hass.states.get(SESSION).state == "off"
     assert hass.states.get(OCCUPY).state == "on"
+
+
+async def test_room_name_snapshots_the_occupancy_entity_list(hass, freezer):
+    updates = []
+    hass.bus.async_listen("occupancy_room_update", lambda event: updates.append(dict(event.data)))
+    hass.states.async_set(
+        "sensor.occupancy_scene_store",
+        "stored",
+        {
+            "rooms": {
+                "study": {
+                    "entities": [CABINET, TILES, "select.preset"],
+                    "snapshot": {},
+                    "vacated": True,
+                }
+            }
+        },
+    )
+    hass.states.async_set(CABINET, "on", {"brightness": 40})
+    hass.states.async_set(TILES, "off")
+    hass.states.async_set("select.preset", "plain")
+    await setup(hass, extra={"room_name": "Study"})
+    await play(hass)
+
+    assert saw("scene", "create")
+    create = next(data for domain, service, data in calls if service == "create")
+    assert create["scene_id"] == "study_scene_tmp"
+    assert create["entities"][CABINET]["state"] == "on"
+    assert create["entities"][CABINET]["brightness"] == 40
+    assert create["entities"][TILES]["state"] == "off"
+    assert create["entities"]["select.preset"] == {"state": "plain"}
+    assert updates[-1]["room"] == "study"
+    assert updates[-1]["snapshot"][CABINET]["brightness"] == 40
+    assert "vacated" not in updates[-1]
+    assert "entities" not in updates[-1]
+    play_at = next(
+        i for i, item in enumerate(calls) if item[0] == "media_player" and item[1] == "media_play"
+    )
+    create_at = next(i for i, item in enumerate(calls) if item[1] == "create")
+    assert create_at < play_at
+
+    hass.states.async_set(MUSIC, "idle")
+    await tick(hass, freezer, 5)
+    await tick(hass, freezer, 2)
+    assert hass.states.get(SESSION).state == "off"
+    hass.states.async_set(CABINET, "off")
+    hass.states.async_set(TILES, "off")
+    calls.clear()
+    await play(hass)
+    assert saw("test", "note", step="snapshot")
+    assert not saw("scene", "create")
+    assert hass.states.get(SESSION).state == "on"
