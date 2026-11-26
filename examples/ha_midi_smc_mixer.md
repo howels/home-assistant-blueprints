@@ -49,7 +49,18 @@ Faders and dials change volume at different speeds in each direction.
 | Fader | `volume_rise_rate`, default 4 %/s | `volume_fall_rate`, default 40 %/s |
 | Dial detent or Up and Down keys | `volume_step_up`, default 1 % | `volume_step_down`, default 2 % |
 
-A fader ramps in steps of half a second. The ramp starts 150 ms after the last fader message, so a drag produces one ramp from the final position. A new position stops the ramp in progress. The blueprint compares the fader position with the fader `number` entity of the device at every step. A ramp that finds a different position ends.
+A fader ramps in steps of half a second. The ramp starts when the fader has been still for `fader_debounce` (default 100 ms), so a drag produces one ramp from the final position. A new position stops the ramp in progress. The blueprint compares the fader position with the fader `number` entity of the device at every step. A ramp that finds a different position ends.
+
+## Fader sampling
+
+A fader sends one MQTT message for each step of its travel, several per 100 ms. Light services and slow lights such as WLED cannot follow that rate, and the commands arrive late and in a burst. `fader_debounce` (Fader sampling interval, default 100 ms, in the advanced section) limits the rate.
+
+| Target | Behaviour |
+|----|----|
+| Lights | Each message waits for the next `fader_debounce` boundary of the clock. It then acts only if it is still the latest position, read from the fader `number` entity. A moving fader sends at most one command per interval and the lights follow the hand. A fader that stops sends its final position within one interval. |
+| Media players | Each message waits `fader_debounce` and acts only if it is still the latest position. A drag therefore starts one ramp. |
+
+If the device has no fader `number` entity, every message acts and nothing is skipped.
 
 `max_volume` limits every control. A fader at the top sets the maximum. A player already above the maximum is not raised by a dial and can still be lowered.
 

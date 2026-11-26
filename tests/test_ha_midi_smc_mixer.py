@@ -17,6 +17,7 @@ from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import (
     async_fire_mqtt_message,
     async_fire_time_changed,
+    async_fire_time_changed_exact,
 )
 
 BP = Path(__file__).resolve().parents[1] / "blueprints/ha_midi_smc_mixer.yaml"
@@ -37,6 +38,7 @@ class Env:
         self.hass, self.freezer, self.mqtt, self.device_id = hass, freezer, mqtt_mock, device_id
         self.calls = []
         self.logs = []
+        self.exact = False
 
     async def pump(self, n=300):
         for _ in range(n):
@@ -44,7 +46,8 @@ class Env:
 
     async def tick(self, seconds):
         self.freezer.tick(timedelta(seconds=seconds))
-        async_fire_time_changed(self.hass)
+        # async_fire_time_changed treats the clock as 0.5 s later. Sampling tests need the exact time.
+        (async_fire_time_changed_exact if self.exact else async_fire_time_changed)(self.hass)
         await self.pump()
 
     async def fire(self, leaf, payload, prefix=PREFIX, fader=True):
@@ -157,33 +160,38 @@ async def test_loads_with_all_defaults(hass, env):
 
 async def test_fader_sets_light_brightness(env):
     await env.fire("pb_0", "40")
+    await env.tick(0.2)
     assert env.calls_of("light.turn_on")[-1][1]["brightness_pct"] == 40
     await env.fire("pb_0", "0")
+    await env.tick(0.2)
     assert env.calls_of("light.turn_off")
 
 
 async def test_fader_function_hue_colour_temp_and_saturation(hass, freezer, mqtt_mock):
     env = await setup(hass, freezer, mqtt_mock, {"strip_1_fader": "hue"})
     await env.fire("pb_0", "50")
+    await env.tick(0.2)
     assert env.calls[-1][1]["hs_color"] == [180.0, 50.0]
 
 
 async def test_fader_colour_temp_uses_light_range(hass, freezer, mqtt_mock):
     env = await setup(hass, freezer, mqtt_mock, {"strip_1_fader": "colour_temp"})
     await env.fire("pb_0", "50")
+    await env.tick(0.2)
     assert env.calls[-1][1]["color_temp_kelvin"] == 4250
 
 
 async def test_fader_saturation_keeps_hue(hass, freezer, mqtt_mock):
     env = await setup(hass, freezer, mqtt_mock, {"strip_1_fader": "saturation"})
     await env.fire("pb_0", "75")
+    await env.tick(0.2)
     assert env.calls[-1][1]["hs_color"] == [120.0, 75.0]
 
 
 async def test_stale_fader_event_is_ignored(hass, env):
     hass.states.async_set(FADER.format(0), "70")
     async_fire_mqtt_message(hass, f"{PREFIX}/pb_0/state", "40")
-    await env.pump()
+    await env.tick(0.2)
     assert not env.calls_of("light.turn_on")
 
 
@@ -191,6 +199,7 @@ async def test_unused_fader_and_none_function_do_nothing(hass, freezer, mqtt_moc
     env = await setup(hass, freezer, mqtt_mock, {"strip_1_fader": "none"})
     await env.fire("pb_0", "40")
     await env.fire("pb_5", "40")
+    await env.tick(0.2)
     assert env.calls == []
 
 
@@ -269,6 +278,66 @@ async def test_players_that_are_off_are_skipped(hass, env):
     await env.tick(0.5)
     assert not env.calls_of("media_player.volume_set")
 
+
+
+# ---- fader sampling -------------------------------------------------------------------------------------------
+
+def align(env):
+    """Start on a whole second so that every sampling interval that divides 1000 ms has a known boundary."""
+    env.freezer.move_to("2026-11-25 12:00:00+00:00")
+    env.exact = True
+
+
+async def test_fader_burst_sends_only_the_latest_light_position(env):
+    align(env)
+    for v in range(10, 100, 10):
+        await env.fire("pb_0", str(v))
+    await env.tick(0.2)
+    assert [c[1]["brightness_pct"] for c in env.calls_of("light.turn_on")] == [90]
+
+
+async def test_moving_fader_updates_lights_once_per_interval(env):
+    align(env)
+    for v in range(1, 51):                        # a message every 20 ms for one second
+        await env.fire("pb_0", str(v * 2))
+        await env.tick(0.02)
+    await env.tick(0.2)
+    levels = [c[1]["brightness_pct"] for c in env.calls_of("light.turn_on")]
+    assert 8 <= len(levels) <= 12                 # about one command per 100 ms, not fifty
+    assert levels == sorted(levels)
+    assert levels[-1] == 100
+
+
+async def test_fader_that_stops_gets_its_final_position(env):
+    align(env)
+    for v in (20, 40, 60):
+        await env.fire("pb_0", str(v))
+        await env.tick(0.03)
+    await env.tick(0.3)
+    assert env.calls_of("light.turn_on")[-1][1]["brightness_pct"] == 60
+
+
+async def test_sampling_interval_input_is_honoured(hass, freezer, mqtt_mock):
+    env = await setup(hass, freezer, mqtt_mock, {"fader_debounce": 500})
+    align(env)
+    await env.fire("pb_0", "40")
+    await env.tick(0.3)
+    assert not env.calls_of("light.turn_on")
+    await env.tick(0.3)
+    assert env.calls_of("light.turn_on")[-1][1]["brightness_pct"] == 40
+
+
+async def test_volume_ramp_waits_for_the_fader_to_be_still(hass, freezer, mqtt_mock):
+    env = await setup(hass, freezer, mqtt_mock, {"fader_debounce": 400})
+    align(env)
+    hass.states.async_set("media_player.cast", "playing", {"volume_level": 0.2})
+    await env.fire("pb_2", "80")
+    await env.tick(0.2)
+    await env.fire("pb_2", "85")
+    await env.tick(0.3)
+    assert not env.calls_of("media_player.volume_set")     # the second message restarted the wait
+    await env.tick(0.3)
+    assert [c[1]["volume_level"] for c in env.calls_of("media_player.volume_set")] == [0.22]
 
 # ---- dials ----------------------------------------------------------------------------------------------------
 

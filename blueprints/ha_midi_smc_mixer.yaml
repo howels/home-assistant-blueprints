@@ -17,6 +17,9 @@ blueprint:
     A rising volume ramps at the rise rate and a falling volume at the fall
     rate. The fall rate is the larger, so a quick pull down is immediate and a
     push up is gradual. A newer fader movement replaces a ramp in progress.
+    A fader sends a message for each step, faster than lights and players
+    follow. A light fader sends at most one command per sampling interval.
+    A volume ramp starts when the fader has been still for that interval.
 
 
     **Dials 1 to 8** (`cc_016_00` to `cc_023_00`). A dial steps the same
@@ -779,6 +782,22 @@ blueprint:
           default: ha-midi/+/+/+/state
           selector:
             text:
+        fader_debounce:
+          name: Fader sampling interval
+          description: >-
+            Milliseconds between light updates while a fader moves, and the
+            time a fader must stay still before a volume ramp starts. Each
+            fader message waits for the next interval boundary and acts only if
+            it is still the latest position, so a moving fader sends at most
+            one light command per interval. Raise it for slow lights.
+          default: 100
+          selector:
+            number:
+              min: 20
+              max: 1000
+              step: 10
+              mode: box
+              unit_of_measurement: ms
         log_events:
           name: Log events
           description: >-
@@ -847,6 +866,7 @@ variables:
   light_dial_step: !input light_dial_step
   night_brightness: !input night_brightness
   log_events: !input log_events
+  fader_debounce: !input fader_debounce
   strips:
     - targets: !input strip_1_targets
       fader: !input strip_1_fader
@@ -936,9 +956,6 @@ variables:
     {{ (device_entities(bridge_device)
         | select('search', '^number[.].*_pitch_bend_channel_' ~ number ~ '$')
         | list | first | default('')) if control.startswith('fader_') else '' }}
-  fader_fresh: >-
-    {{ fader_entity == '' or not (states(fader_entity) | is_number)
-       or states(fader_entity) | float == fader_value }}
   fader_function: "{{ strip.fader | default('none') if control.startswith('fader_') else 'none' }}"
   dial_function: "{{ strip.dial | default('none') if control.startswith('dial_') and payload | int(0) % 64 > 0 else 'none' }}"
   volume_step_dir: >-
@@ -968,67 +985,77 @@ actions:
     if:
       - condition: template
         value_template: >-
-          {{ trigger.id == 'midi' and fader_function != 'none' and fader_fresh
+          {{ trigger.id == 'midi' and fader_function != 'none'
              and strip_lights | length > 0
              and (fader_function == 'auto' or fader_function in light_functions) }}
     then:
+      - alias: Wait for the next sampling point
+        delay:
+          milliseconds: "{{ fader_debounce - ((as_timestamp(now()) * 1000) | int % fader_debounce) }}"
       - variables:
           light_function: "{{ 'brightness' if fader_function == 'auto' else fader_function }}"
-      - repeat:
-          for_each: "{{ strip_lights }}"
-          sequence:
-            - choose:
-                - conditions: "{{ light_function == 'brightness' and fader_value <= 0 }}"
-                  sequence:
-                    - action: light.turn_off
-                      continue_on_error: true
-                      target:
-                        entity_id: "{{ repeat.item }}"
-                      data:
-                        transition: 0
-                - conditions: "{{ light_function == 'brightness' }}"
-                  sequence:
-                    - action: light.turn_on
-                      continue_on_error: true
-                      target:
-                        entity_id: "{{ repeat.item }}"
-                      data:
-                        brightness_pct: "{{ [fader_value | round(0) | int, 1] | max }}"
-                        transition: 0
-                - conditions: "{{ light_function == 'colour_temp' }}"
-                  sequence:
-                    - action: light.turn_on
-                      continue_on_error: true
-                      target:
-                        entity_id: "{{ repeat.item }}"
-                      data:
-                        color_temp_kelvin: >-
-                          {% set low = state_attr(repeat.item, 'min_color_temp_kelvin') | int(2000) %}
-                          {% set high = state_attr(repeat.item, 'max_color_temp_kelvin') | int(6500) %}
-                          {{ (low + (high - low) * fader_value / 100) | round(0) | int }}
-                        transition: 0
-                - conditions: "{{ light_function == 'hue' }}"
-                  sequence:
-                    - action: light.turn_on
-                      continue_on_error: true
-                      target:
-                        entity_id: "{{ repeat.item }}"
-                      data:
-                        hs_color:
-                          - "{{ (fader_value * 3.6) | round(1) }}"
-                          - "{{ ((state_attr(repeat.item, 'hs_color') or [0, 100])[1]) | float(100) }}"
-                        transition: 0
-                - conditions: "{{ light_function == 'saturation' }}"
-                  sequence:
-                    - action: light.turn_on
-                      continue_on_error: true
-                      target:
-                        entity_id: "{{ repeat.item }}"
-                      data:
-                        hs_color:
-                          - "{{ ((state_attr(repeat.item, 'hs_color') or [0, 100])[0]) | float(0) }}"
-                          - "{{ fader_value }}"
-                        transition: 0
+          fader_current: >-
+            {{ fader_entity == '' or not (states(fader_entity) | is_number)
+               or states(fader_entity) | float == fader_value }}
+      - if:
+          - condition: template
+            value_template: "{{ fader_current }}"
+        then:
+          - repeat:
+              for_each: "{{ strip_lights }}"
+              sequence:
+                - choose:
+                    - conditions: "{{ light_function == 'brightness' and fader_value <= 0 }}"
+                      sequence:
+                        - action: light.turn_off
+                          continue_on_error: true
+                          target:
+                            entity_id: "{{ repeat.item }}"
+                          data:
+                            transition: 0
+                    - conditions: "{{ light_function == 'brightness' }}"
+                      sequence:
+                        - action: light.turn_on
+                          continue_on_error: true
+                          target:
+                            entity_id: "{{ repeat.item }}"
+                          data:
+                            brightness_pct: "{{ [fader_value | round(0) | int, 1] | max }}"
+                            transition: 0
+                    - conditions: "{{ light_function == 'colour_temp' }}"
+                      sequence:
+                        - action: light.turn_on
+                          continue_on_error: true
+                          target:
+                            entity_id: "{{ repeat.item }}"
+                          data:
+                            color_temp_kelvin: >-
+                              {% set low = state_attr(repeat.item, 'min_color_temp_kelvin') | int(2000) %}
+                              {% set high = state_attr(repeat.item, 'max_color_temp_kelvin') | int(6500) %}
+                              {{ (low + (high - low) * fader_value / 100) | round(0) | int }}
+                            transition: 0
+                    - conditions: "{{ light_function == 'hue' }}"
+                      sequence:
+                        - action: light.turn_on
+                          continue_on_error: true
+                          target:
+                            entity_id: "{{ repeat.item }}"
+                          data:
+                            hs_color:
+                              - "{{ (fader_value * 3.6) | round(1) }}"
+                              - "{{ ((state_attr(repeat.item, 'hs_color') or [0, 100])[1]) | float(100) }}"
+                            transition: 0
+                    - conditions: "{{ light_function == 'saturation' }}"
+                      sequence:
+                        - action: light.turn_on
+                          continue_on_error: true
+                          target:
+                            entity_id: "{{ repeat.item }}"
+                          data:
+                            hs_color:
+                              - "{{ ((state_attr(repeat.item, 'hs_color') or [0, 100])[0]) | float(0) }}"
+                              - "{{ fader_value }}"
+                            transition: 0
 
   - alias: Fader ramps media player volume
     if:
@@ -1039,7 +1066,7 @@ actions:
     then:
       - alias: Wait for the fader to settle
         delay:
-          milliseconds: 150
+          milliseconds: "{{ fader_debounce }}"
       - variables:
           fader_moved: >-
             {{ fader_entity != '' and states(fader_entity) | is_number
