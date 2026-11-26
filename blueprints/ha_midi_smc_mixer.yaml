@@ -280,6 +280,8 @@ blueprint:
                   value: brightness
                 - label: "Colour temperature"
                   value: colour_temp
+                - label: "Colour temperature via RGB"
+                  value: colour_temp_rgb
                 - label: "Hue"
                   value: hue
                 - label: "Saturation"
@@ -302,6 +304,8 @@ blueprint:
                   value: brightness
                 - label: "Colour temperature"
                   value: colour_temp
+                - label: "Colour temperature via RGB"
+                  value: colour_temp_rgb
                 - label: "Hue"
                   value: hue
                 - label: "Saturation"
@@ -344,6 +348,8 @@ blueprint:
                   value: brightness
                 - label: "Colour temperature"
                   value: colour_temp
+                - label: "Colour temperature via RGB"
+                  value: colour_temp_rgb
                 - label: "Hue"
                   value: hue
                 - label: "Saturation"
@@ -366,6 +372,8 @@ blueprint:
                   value: brightness
                 - label: "Colour temperature"
                   value: colour_temp
+                - label: "Colour temperature via RGB"
+                  value: colour_temp_rgb
                 - label: "Hue"
                   value: hue
                 - label: "Saturation"
@@ -408,6 +416,8 @@ blueprint:
                   value: brightness
                 - label: "Colour temperature"
                   value: colour_temp
+                - label: "Colour temperature via RGB"
+                  value: colour_temp_rgb
                 - label: "Hue"
                   value: hue
                 - label: "Saturation"
@@ -430,6 +440,8 @@ blueprint:
                   value: brightness
                 - label: "Colour temperature"
                   value: colour_temp
+                - label: "Colour temperature via RGB"
+                  value: colour_temp_rgb
                 - label: "Hue"
                   value: hue
                 - label: "Saturation"
@@ -472,6 +484,8 @@ blueprint:
                   value: brightness
                 - label: "Colour temperature"
                   value: colour_temp
+                - label: "Colour temperature via RGB"
+                  value: colour_temp_rgb
                 - label: "Hue"
                   value: hue
                 - label: "Saturation"
@@ -494,6 +508,8 @@ blueprint:
                   value: brightness
                 - label: "Colour temperature"
                   value: colour_temp
+                - label: "Colour temperature via RGB"
+                  value: colour_temp_rgb
                 - label: "Hue"
                   value: hue
                 - label: "Saturation"
@@ -536,6 +552,8 @@ blueprint:
                   value: brightness
                 - label: "Colour temperature"
                   value: colour_temp
+                - label: "Colour temperature via RGB"
+                  value: colour_temp_rgb
                 - label: "Hue"
                   value: hue
                 - label: "Saturation"
@@ -558,6 +576,8 @@ blueprint:
                   value: brightness
                 - label: "Colour temperature"
                   value: colour_temp
+                - label: "Colour temperature via RGB"
+                  value: colour_temp_rgb
                 - label: "Hue"
                   value: hue
                 - label: "Saturation"
@@ -600,6 +620,8 @@ blueprint:
                   value: brightness
                 - label: "Colour temperature"
                   value: colour_temp
+                - label: "Colour temperature via RGB"
+                  value: colour_temp_rgb
                 - label: "Hue"
                   value: hue
                 - label: "Saturation"
@@ -622,6 +644,8 @@ blueprint:
                   value: brightness
                 - label: "Colour temperature"
                   value: colour_temp
+                - label: "Colour temperature via RGB"
+                  value: colour_temp_rgb
                 - label: "Hue"
                   value: hue
                 - label: "Saturation"
@@ -664,6 +688,8 @@ blueprint:
                   value: brightness
                 - label: "Colour temperature"
                   value: colour_temp
+                - label: "Colour temperature via RGB"
+                  value: colour_temp_rgb
                 - label: "Hue"
                   value: hue
                 - label: "Saturation"
@@ -686,6 +712,8 @@ blueprint:
                   value: brightness
                 - label: "Colour temperature"
                   value: colour_temp
+                - label: "Colour temperature via RGB"
+                  value: colour_temp_rgb
                 - label: "Hue"
                   value: hue
                 - label: "Saturation"
@@ -728,6 +756,8 @@ blueprint:
                   value: brightness
                 - label: "Colour temperature"
                   value: colour_temp
+                - label: "Colour temperature via RGB"
+                  value: colour_temp_rgb
                 - label: "Hue"
                   value: hue
                 - label: "Saturation"
@@ -750,6 +780,8 @@ blueprint:
                   value: brightness
                 - label: "Colour temperature"
                   value: colour_temp
+                - label: "Colour temperature via RGB"
+                  value: colour_temp_rgb
                 - label: "Hue"
                   value: hue
                 - label: "Saturation"
@@ -961,7 +993,7 @@ variables:
       dial: !input strip_8_dial
   record_players: "{{ record_players_input if record_players_input | length > 0 else media_players }}"
   ramp_interval: 0.5
-  light_functions: [brightness, colour_temp, hue, saturation]
+  light_functions: [brightness, colour_temp, colour_temp_rgb, hue, saturation]
   transport_keys:
     - rewind
     - fast_forward
@@ -1100,6 +1132,24 @@ actions:
                               {% set low = state_attr(repeat.item, 'min_color_temp_kelvin') | int(2000) %}
                               {% set high = state_attr(repeat.item, 'max_color_temp_kelvin') | int(6500) %}
                               {{ (low + (high - low) * fader_value / 100) | round(0) | int }}
+                            transition: 0
+                    - conditions: "{{ light_function == 'colour_temp_rgb' }}"
+                      sequence:
+                        - action: light.turn_on
+                          continue_on_error: true
+                          target:
+                            entity_id: "{{ repeat.item }}"
+                          data:
+                            rgb_color: >-
+                              {% set low = state_attr(repeat.item, 'min_color_temp_kelvin') | int(2000) %}
+                              {% set high = state_attr(repeat.item, 'max_color_temp_kelvin') | int(6500) %}
+                              {% set t = (low + (high - low) * fader_value / 100) / 100.0 %}
+                              {% set r = 255 if t <= 66 else 329.698727446 * ((t - 60) ** -0.1332047592) %}
+                              {% set g = (99.4708025861 * (t | log) - 161.1195681661) if t <= 66 else (288.1221695283 * ((t - 60) ** -0.0755148492)) %}
+                              {% set b = 255 if t >= 66 else (0 if t <= 19 else (138.5177312231 * ((t - 10) | log) - 305.0447927307)) %}
+                              {{ [ [[r, 0] | max, 255] | min | round(0) | int,
+                                   [[g, 0] | max, 255] | min | round(0) | int,
+                                   [[b, 0] | max, 255] | min | round(0) | int ] }}
                             transition: 0
                     - conditions: "{{ light_function == 'hue' }}"
                       sequence:
@@ -1259,6 +1309,40 @@ actions:
                                     {% set current = low %}
                                   {% endif %}
                                   {{ [[current + (high - low) * dial_pct / 100, low] | max, high] | min | round(0) | int }}
+                                transition: 0
+                        - conditions: "{{ light_function == 'colour_temp_rgb' }}"
+                          sequence:
+                            - action: light.turn_on
+                              continue_on_error: true
+                              target:
+                                entity_id: "{{ repeat.item }}"
+                              data:
+                                rgb_color: >-
+                                  {% set low = state_attr(repeat.item, 'min_color_temp_kelvin') | int(2000) %}
+                                  {% set high = state_attr(repeat.item, 'max_color_temp_kelvin') | int(6500) %}
+                                  {% set rgb = state_attr(repeat.item, 'rgb_color') %}
+                                  {% set measured = state_attr(repeat.item, 'color_temp_kelvin') %}
+                                  {% if rgb is not none and rgb | length == 3 and rgb | max > 0 %}
+                                    {% set top = rgb | max %}
+                                    {% set red = [rgb[0] * 255 / top, 1] | max %}
+                                    {% set blue = rgb[2] * 255 / top %}
+                                    {% if blue >= red %}
+                                      {% set current = 100 * ((red / 329.698727446) ** (-1 / 0.1332047592) + 60) %}
+                                    {% else %}
+                                      {% set current = 100 * (e ** ((blue + 305.0447927307) / 138.5177312231) + 10) %}
+                                    {% endif %}
+                                  {% elif measured is number %}
+                                    {% set current = measured %}
+                                  {% else %}
+                                    {% set current = low %}
+                                  {% endif %}
+                                  {% set t = ([[current + (high - low) * dial_pct / 100, low] | max, high] | min) / 100.0 %}
+                                  {% set r = 255 if t <= 66 else 329.698727446 * ((t - 60) ** -0.1332047592) %}
+                                  {% set g = (99.4708025861 * (t | log) - 161.1195681661) if t <= 66 else (288.1221695283 * ((t - 60) ** -0.0755148492)) %}
+                                  {% set b = 255 if t >= 66 else (0 if t <= 19 else (138.5177312231 * ((t - 10) | log) - 305.0447927307)) %}
+                                  {{ [ [[r, 0] | max, 255] | min | round(0) | int,
+                                       [[g, 0] | max, 255] | min | round(0) | int,
+                                       [[b, 0] | max, 255] | min | round(0) | int ] }}
                                 transition: 0
                         - conditions: "{{ light_function == 'hue' }}"
                           sequence:
