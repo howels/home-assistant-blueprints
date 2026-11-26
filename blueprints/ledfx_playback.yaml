@@ -5,9 +5,9 @@ blueprint:
   source_url: https://github.com/howels/home-assistant-blueprints/blob/main/blueprints/ledfx_playback.yaml
   description: >-
     Starts and stops one LedFX media player from the playback state of one or
-    more media players. Create one automation per room. Disable the existing
-    per-room LedFX automations before enabling this one, or both will pause
-    LedFX and restore the room.
+    more media players. Create one automation per room. If another automation
+    also plays or pauses that LedFX player, disable it first, or both will
+    pause LedFX and restore the room.
 
 
     Players. Any linked player changing to playing runs the start sequence.
@@ -16,15 +16,14 @@ blueprint:
     states are idle, paused, and off by default. unavailable, unknown, and
     buffering do not count as stopped, so a missing player or a buffer gap
     does not turn the lights off. Remove paused from the list to leave the
-    lights on while a player sits on pause, which is what the study, kitchen,
-    and living room automations did.
+    lights on while a player sits on pause.
 
 
     Stop delay. The player that changed must stay stopped for the stop delay
     before the stop sequence starts. Every other linked player must already
     have been stopped for that long. A return to playing before the delay
-    elapses does not pause LedFX. The study automation used 60 seconds. The
-    kitchen, living room, and bathroom automations used 20.
+    elapses does not pause LedFX. 20 seconds covers a short gap between
+    tracks. Use a longer delay when the player reports idle between tracks.
 
 
     Session. The optional input_boolean is turned on after the snapshot
@@ -52,7 +51,7 @@ blueprint:
 
 
     Stop. If LedFX is playing or buffering it is paused, and the automation
-    waits the settle time. Kitchen and living room used 2 seconds here. If LedFX was
+    waits the settle time. The default is 2 seconds. If LedFX was
     already paused, the room is restored without that wait. If a linked
     player is playing again after the wait, LedFX is played and the room is
     left as it is. Otherwise the lights-off list is turned off, the restore
@@ -77,27 +76,15 @@ blueprint:
     does not pause LedFX.
 
 
-    Rooms this replaces. Study uses media_player.ledfx_study and
-    media_player.ledfx_ledfx_lan_media_player, turns on
-    switch.5v_80a_psu_smart_plug_v2_ebd5fa_switch and turns it off on stop,
-    runs script.study_light_on_create_scene, presses
-    button.ledfx_ledfx_lan_histograms_and_strips, restores
-    scene.study_scene_tmp, and waits 60 seconds of idle. Kitchen uses
-    media_player.ledfx_kitchen and
-    media_player.ledfx_ledfx_kitchen_lan_media_player, runs
-    script.kitchen_lights_on_create_scene, refreshes
-    light.ledfx_ledfx_kitchen_lan_kitchen_tiles, turns on
-    light.ledfx_ledfx_kitchen_lan_nanoleaf, restores scene.kitchen_scene_tmp,
-    and waits 20 seconds. Its supplies stay on. Living room uses
-    media_player.ledfx_livingroom and
-    media_player.living_room_ledfx_living_room_media_player, runs
-    script.living_room_light_on_create_scene, leaves the supplies on, and
-    waits 20 seconds. Its pause automation does not restore a scene.
-    Bathroom uses media_player.ledfx_bathroom and
-    media_player.ledfx_bathroom_media_player, turns
-    automation.bathroom_occupied and automation.bathroom_unoccupied off while
-    LedFX is running, turns light.bathroom_cabinet on and off, presses
-    button.ledfx_ledfx_kitchen_lan_bathroom_power, and waits 20 seconds.
+    Example. Link media_player.room_speaker to media_player.room_ledfx. Turn
+    on switch.led_supply when playback starts, and turn it off on stop if the
+    supply should drop with the music. Call script.snapshot_room before
+    LedFX plays, press button.ledfx_preset, turn light.led_strip off and on,
+    and turn on light.accent. Restore scene.room_saved when playback stops.
+    Suspend automation.room_motion while the session is open. A second
+    speaker, media_player.room_speaker_2, can be added to the same list.
+    LedFX then starts when either speaker plays, and stops only when both
+    have stopped.
   input:
     players_section:
       name: Players
@@ -107,9 +94,9 @@ blueprint:
         music_players:
           name: Music players
           description: >-
-            Media players whose playback runs this room's LedFX. LedFX starts
-            when any of them starts playing, and stops only when all of them
-            are stopped. Use the Music Assistant player for the room.
+            Media players whose playback runs this room's LedFX. For example
+            media_player.room_speaker. LedFX starts when any of them starts
+            playing, and stops only when all of them are stopped.
           selector:
             entity:
               multiple: true
@@ -118,8 +105,9 @@ blueprint:
         ledfx_player:
           name: LedFX player
           description: >-
-            LedFX media player to play and pause. This is the LedFX virtual,
-            not the Music Assistant player.
+            LedFX media player to play and pause, for example
+            media_player.room_ledfx. This is the LedFX virtual, not the music
+            player.
           selector:
             entity:
               filter:
@@ -128,7 +116,8 @@ blueprint:
           name: Stopped states
           description: >-
             States that mean a linked player has stopped. Every linked player
-            must be in one of these before LedFX is paused.
+            must be in one of these before LedFX is paused. Leave paused out
+            to keep the lights on while a player is paused.
           default:
             - idle
             - paused
@@ -147,6 +136,8 @@ blueprint:
           description: >-
             How long every linked player must stay stopped before LedFX is
             paused. A return to playing during this time leaves LedFX running.
+            20 seconds covers a short gap. Use 60 seconds when the player
+            reports idle between tracks.
           default: 20
           selector:
             number:
@@ -163,9 +154,10 @@ blueprint:
         session_helper:
           name: Session helper
           description: >-
-            Optional input_boolean. On from the LedFX start until the room is
-            restored. While on, a later start does not snapshot the room
-            again. Leave empty to use the LedFX player state only.
+            Optional input_boolean, for example input_boolean.room_ledfx.
+            On from the LedFX start until the room is restored. While on, a
+            later start does not snapshot the room again. Leave empty to use
+            the LedFX player state only.
           default: ""
           selector:
             entity:
@@ -176,8 +168,8 @@ blueprint:
           description: >-
             Turned off, with their actions stopped, when a LedFX session
             opens. Turned on when the room is restored. List only automations
-            that should be on while LedFX is stopped. Bathroom uses
-            automation.bathroom_occupied and automation.bathroom_unoccupied.
+            that should be on while LedFX is stopped, for example
+            automation.room_motion.
           default: []
           selector:
             entity:
@@ -189,6 +181,8 @@ blueprint:
           description: >-
             Wait after pausing LedFX before turning lights off and restoring
             scenes. A return to playing during this wait cancels the stop.
+            2 seconds lets the player pause before the scene is applied.
+            0 restores immediately.
           default: 2
           selector:
             number:
@@ -201,8 +195,8 @@ blueprint:
           name: LedFX ready time
           description: >-
             If LedFX is unavailable or unknown when playback starts, wait this
-            long for a usable state before giving up. 0 does not wait. Use
-            this when a power switch supplies the LedFX host.
+            long for a usable state before giving up. 0 does not wait. Use 10
+            or more when a power switch supplies the machine running LedFX.
           default: 0
           selector:
             number:
@@ -237,9 +231,8 @@ blueprint:
         power_entities:
           name: Power switches
           description: >-
-            Switches turned on whenever a linked player is playing.
-            Study uses the LED supply. Kitchen and living room use their room
-            supplies.
+            Switches turned on whenever a linked player is playing. For
+            example switch.led_supply.
           default: []
           selector:
             entity:
@@ -250,7 +243,7 @@ blueprint:
           name: Lights to turn on
           description: >-
             Turned on whenever a linked player is playing, including when
-            LedFX is already playing. Bathroom turns on the cabinet light.
+            LedFX is already playing. For example light.cabinet.
           default: []
           selector:
             entity:
@@ -260,20 +253,16 @@ blueprint:
         ledfx_start_actions:
           name: LedFX start actions
           description: >-
-            Run once when a session opens, before LedFX is played. Use the
-            room snapshot script here. Study uses
-            script.study_light_on_create_scene, kitchen uses
-            script.kitchen_lights_on_create_scene, and living room uses
-            script.living_room_light_on_create_scene.
+            Run once when a session opens, before LedFX is played. Use this
+            to snapshot the room, for example a call to script.snapshot_room.
           default: []
           selector:
             action: {}
         preset_buttons:
           name: Preset buttons
           description: >-
-            Pressed after LedFX starts, only when a session opens. Study uses
-            button.ledfx_ledfx_lan_histograms_and_strips. Bathroom uses
-            button.ledfx_ledfx_kitchen_lan_bathroom_power.
+            Pressed after LedFX starts, only when a session opens. For
+            example button.ledfx_preset.
           default: []
           selector:
             entity:
@@ -284,8 +273,8 @@ blueprint:
           name: Lights to refresh
           description: >-
             Turned off, then on, after LedFX starts, only when a session
-            opens. Kitchen does this for
-            light.ledfx_ledfx_kitchen_lan_kitchen_tiles.
+            opens. For example light.led_strip, when the effect has to be
+            reapplied.
           default: []
           selector:
             entity:
@@ -295,8 +284,8 @@ blueprint:
         session_lights:
           name: Lights to turn on with LedFX
           description: >-
-            Turned on after LedFX starts, only when a session opens. Kitchen
-            uses light.ledfx_ledfx_kitchen_lan_nanoleaf.
+            Turned on after LedFX starts, only when a session opens. For
+            example light.accent.
           default: []
           selector:
             entity:
@@ -308,7 +297,8 @@ blueprint:
           description: >-
             Run after the start sequence, only when a linked player changes
             to playing. Not run from Home Assistant start or the minute
-            check. Failures are ignored.
+            check. For example, turn off an input_boolean that selects
+            another display mode. Failures are ignored.
           default: []
           selector:
             action: {}
@@ -321,8 +311,7 @@ blueprint:
           name: Lights to turn off
           description: >-
             Turned off after LedFX is paused and the settle time has elapsed,
-            before the scenes are restored. Bathroom turns off the cabinet
-            light.
+            before the scenes are restored. For example light.cabinet.
           default: []
           selector:
             entity:
@@ -332,9 +321,9 @@ blueprint:
         restore_scenes:
           name: Scenes to restore
           description: >-
-            Turned on after the lights-off list. Study restores
-            scene.study_scene_tmp and kitchen restores
-            scene.kitchen_scene_tmp. Living room does not restore a scene.
+            Turned on after the lights-off list. For example
+            scene.room_saved. Leave empty to leave the lights as they are
+            when LedFX pauses.
           default: []
           selector:
             entity:
@@ -344,17 +333,16 @@ blueprint:
         power_off_on_stop:
           name: Turn power off when stopped
           description: >-
-            Turns the power switches off after the scenes are restored. Study
-            does this. Kitchen and living room leave the supplies on.
+            Turns the power switches off after the scenes are restored. Leave
+            this off to keep the supplies on.
           default: false
           selector:
             boolean: {}
         playback_stop_actions:
           name: Playback stop actions
           description: >-
-            Run after the room is restored. Failures are ignored. Kitchen
-            turns input_boolean.pixoo64_album_art on and restarts the
-            AppDaemon add-on here.
+            Run after the room is restored. For example, turn an
+            input_boolean on or run a script. Failures are ignored.
           default: []
           selector:
             action: {}
