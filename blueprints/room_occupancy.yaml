@@ -59,20 +59,27 @@ blueprint:
     queue, not when its trigger fired.
 
 
-    Persistence. The snapshot and the vacated flag are written by firing the
-    event occupancy_room_update. A trigger-based template sensor
-    (sensor.occupancy_scene_store by default, defined in configuration.yaml)
-    keeps them in its attributes and Home Assistant restores them after a
-    restart. The entity list is stored on the same record, as entities.
-    It is written when Home Assistant starts and when automations reload,
-    from Entities to save and restore on this automation. LedFX playback
-    reads that list, so the entities are edited here only. On Home Assistant
-    start, and after scene.reload, the automation recreates
-    scene.<room>_scene_tmp from the saved snapshot. Home Assistant
-    writes restored state to disk every 15 minutes and on a clean stop, so a
-    power loss can lose the last 15 minutes of changes. Without the store sensor
-    the automation still works but forgets everything at restart, and every
-    entry restores the lights.
+    Persistence. Before the first automation from this blueprint, create one
+    trigger-based template sensor. Add the item in
+    examples/occupancy_scene_store.yaml to the template: list in
+    configuration.yaml, check the configuration, and reload template entities.
+    That creates sensor.occupancy_scene_store. One sensor holds every room.
+    This blueprint does not create the sensor.
+
+
+    The automation writes a room by firing occupancy_room_update. The sensor
+    stores that event in its rooms attribute, and Home Assistant restores the
+    attribute after a restart. Each room record holds the snapshot, when it
+    was saved, the vacated flag, and the entity list. The entity list is
+    written when Home Assistant starts and when automations reload, from
+    Entities to save and restore on this automation. LedFX playback reads
+    that list, so the entities are edited here only. On Home Assistant start,
+    and after scene.reload, the automation recreates scene.<room>_scene_tmp
+    from the saved snapshot. Home Assistant writes restored state to disk
+    every 15 minutes and on a clean stop, so a power loss can lose the last
+    15 minutes of changes. Without the store sensor the automation still turns
+    the lights on and off, but it forgets the snapshot and the vacated flag at
+    restart, and LedFX cannot read the entity list.
 
 
     To forget a room's snapshot, fire occupancy_room_update with the room slug,
@@ -247,8 +254,10 @@ blueprint:
         store:
           name: Store sensor
           description: >-
-            Trigger-based template sensor that keeps the snapshots. See the
-            description of this blueprint.
+            The sensor created from examples/occupancy_scene_store.yaml. Add
+            that template to configuration.yaml and reload template entities
+            before this automation runs. One sensor stores every room. This
+            blueprint does not create the sensor.
           default: sensor.occupancy_scene_store
           selector:
             entity:

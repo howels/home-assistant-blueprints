@@ -266,8 +266,11 @@ blueprint:
         snapshot_store:
           name: Occupancy store
           description: >-
-            Store sensor the room occupancy blueprint writes. The room
-            record's entities field is the list that is saved.
+            The occupancy scene store. Create it from
+            examples/occupancy_scene_store.yaml and reload template entities
+            before setting a room name. This blueprint reads the room record
+            and does not create the sensor. The record's entities field is
+            the list that is saved.
           default: sensor.occupancy_scene_store
           selector:
             entity:
