@@ -824,33 +824,83 @@ triggers:
   - trigger: state
     id: led_media
     entity_id: !input media_players
+    to:
+  - trigger: state
+    id: led_media
+    entity_id: !input media_players
+    attribute: is_volume_muted
   - trigger: state
     id: led_media
     entity_id: !input record_media_players
+    to:
+  - trigger: state
+    id: led_media
+    entity_id: !input record_media_players
+    attribute: is_volume_muted
   - trigger: state
     id: led_strip_1
     entity_id: !input strip_1_targets
+    to:
+  - trigger: state
+    id: led_strip_1
+    entity_id: !input strip_1_targets
+    attribute: is_volume_muted
   - trigger: state
     id: led_strip_2
     entity_id: !input strip_2_targets
+    to:
+  - trigger: state
+    id: led_strip_2
+    entity_id: !input strip_2_targets
+    attribute: is_volume_muted
   - trigger: state
     id: led_strip_3
     entity_id: !input strip_3_targets
+    to:
+  - trigger: state
+    id: led_strip_3
+    entity_id: !input strip_3_targets
+    attribute: is_volume_muted
   - trigger: state
     id: led_strip_4
     entity_id: !input strip_4_targets
+    to:
+  - trigger: state
+    id: led_strip_4
+    entity_id: !input strip_4_targets
+    attribute: is_volume_muted
   - trigger: state
     id: led_strip_5
     entity_id: !input strip_5_targets
+    to:
+  - trigger: state
+    id: led_strip_5
+    entity_id: !input strip_5_targets
+    attribute: is_volume_muted
   - trigger: state
     id: led_strip_6
     entity_id: !input strip_6_targets
+    to:
+  - trigger: state
+    id: led_strip_6
+    entity_id: !input strip_6_targets
+    attribute: is_volume_muted
   - trigger: state
     id: led_strip_7
     entity_id: !input strip_7_targets
+    to:
+  - trigger: state
+    id: led_strip_7
+    entity_id: !input strip_7_targets
+    attribute: is_volume_muted
   - trigger: state
     id: led_strip_8
     entity_id: !input strip_8_targets
+    to:
+  - trigger: state
+    id: led_strip_8
+    entity_id: !input strip_8_targets
+    attribute: is_volume_muted
 variables:
   bridge_device: !input device
   prefix_override: !input topic_prefix

@@ -569,14 +569,41 @@ async def test_log_events_names_the_controls(hass, freezer, mqtt_mock):
                     "Record: ON", "Record: OFF", "Previous 8 tracks: ON", "Previous 8 tracks: OFF"]
 
 
+# ---- state triggers --------------------------------------------------------------------------------------------
+
+async def test_light_attribute_changes_do_not_start_a_run(hass, env):
+    """A dial changes brightness and colour many times a second. Each change must not start a run, or the runs
+    fill the stored traces and the parallel run limit."""
+    before = hass.states.get("automation.mixer").attributes["last_triggered"]
+    hass.states.async_set("light.lamp", "on", {"brightness": 10, "color_temp_kelvin": 3000})
+    await env.pump()
+    hass.states.async_set("light.lamp", "on", {"brightness": 200, "color_temp_kelvin": 5000})
+    await env.pump()
+    assert hass.states.get("automation.mixer").attributes["last_triggered"] == before
+
+
+async def test_light_state_change_starts_a_run(hass, env):
+    before = hass.states.get("automation.mixer").attributes["last_triggered"]
+    hass.states.async_set("light.lamp", "off")
+    await env.pump()
+    assert hass.states.get("automation.mixer").attributes["last_triggered"] != before
+
+
+async def test_player_mute_change_starts_a_run(hass, env):
+    before = hass.states.get("automation.mixer").attributes["last_triggered"]
+    hass.states.async_set("media_player.amp", "paused", {"volume_level": 0.5, "is_volume_muted": True})
+    await env.pump()
+    assert hass.states.get("automation.mixer").attributes["last_triggered"] != before
+
+
 # ---- key lights -----------------------------------------------------------------------------------------------
 
 async def test_transport_lights_follow_media_players(hass, env):
-    hass.states.async_set("media_player.amp", "playing", {"volume_level": 0.5})
+    hass.states.async_set("media_player.amp", "playing", {"volume_level": 0.5, "is_volume_muted": False})
     await env.pump()
     transport = range(93, 96)
     assert env.led(transport) == [(94, "ON"), (93, "OFF"), (95, "ON")]
-    hass.states.async_set("media_player.amp", "paused", {"volume_level": 0.5})
+    hass.states.async_set("media_player.amp", "paused", {"volume_level": 0.5, "is_volume_muted": False})
     await env.pump()
     assert env.led(transport)[3:] == [(94, "OFF"), (93, "ON"), (95, "OFF")]
 
