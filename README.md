@@ -9,6 +9,7 @@ Home Assistant blueprints by howels.
 | `examples/ha_midi_restart.md` | The `shell_command` that restarts the ha-midi bridge, and the SSH and systemd requirements. |
 | `blueprints/room_occupancy.yaml` | Restores a room's lighting on entry and saves it, then turns the lights off, when the room is clear. |
 | `blueprints/zha_aurora_dimmer_lights.yaml` | Controls up to two light groups from a ZHA Aurora dimmer or smart knob. Handles step events and absolute level events, with adjustable sensitivity. |
+| `blueprints/ledfx_playback.yaml` | Starts and stops a room's LedFX player from the playing state of its Music Assistant players. |
 | `blueprints/wled-matrix-album-art.yaml` | Shows a media player's album art on a WLED matrix and clears the matrix when playback stops. |
 | `blueprints/panda_esl_weather.yaml` | Draws current weather and a three day forecast on a PANDA / ETAG Bluetooth e-paper label through the PANDA ESL integration. Icon style is Material Design Icons or OpenMoji pictures. |
 | `blueprints/panda_esl_todo.yaml` | Draws the open items of a to-do entity, with due dates, on a PANDA ESL label. |
@@ -30,6 +31,13 @@ Home Assistant blueprints by howels.
 2. In Home Assistant, open Settings > Automations & scenes > Blueprints > Import blueprint. Enter `https://github.com/howels/home-assistant-blueprints/blob/main/blueprints/panda_esl_agenda.yaml`. Use another `panda_esl_*.yaml` file name for the weather, to-do, calendar, or alerts display.
 3. Create one automation per label. `examples/panda_esl.md` describes the layout, the colours, and the emoji images.
 4. Optional: create an input_text helper with a maximum length of at least 32 and select it as Last sent helper. The blueprint then skips writes of an image that matches the previous write. Force push options override the skip.
+
+## Install LedFX playback
+
+1. In Home Assistant, open Settings > Automations & scenes > Blueprints > Import blueprint. Enter `https://github.com/howels/home-assistant-blueprints/blob/main/blueprints/ledfx_playback.yaml`.
+2. Create one automation per room. The blueprint description names the players, scripts, scenes, and delays used by the study, kitchen, living room, and bathroom automations.
+3. Disable those existing LedFX automations before turning the new one on. Both would pause LedFX and restore the room.
+4. Create an `input_boolean` per room and select it as the session helper. The helper stops a second snapshot if playback returns while LedFX is settling.
 
 ## Install room_occupancy
 

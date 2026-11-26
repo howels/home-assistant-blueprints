@@ -1,0 +1,709 @@
+blueprint:
+  name: LedFX playback lights
+  author: howels
+  domain: automation
+  source_url: https://github.com/howels/home-assistant-blueprints/blob/main/blueprints/ledfx_playback.yaml
+  description: >-
+    Starts and stops one LedFX media player from the playback state of one or
+    more media players. Create one automation per room. Disable the existing
+    per-room LedFX automations before enabling this one, or both will pause
+    LedFX and restore the room.
+
+
+    Players. Any linked player changing to playing runs the start sequence.
+    Attribute updates, including the playback position, do not. LedFX is
+    paused only when every linked player is in a stopped state. The stopped
+    states are idle, paused, and off by default. unavailable, unknown, and
+    buffering do not count as stopped, so a missing player or a buffer gap
+    does not turn the lights off. Remove paused from the list to leave the
+    lights on while a player sits on pause, which is what the study, kitchen,
+    and living room automations did.
+
+
+    Stop delay. The player that changed must stay stopped for the stop delay
+    before the stop sequence starts. Every other linked player must already
+    have been stopped for that long. A return to playing before the delay
+    elapses does not pause LedFX. The study automation used 60 seconds. The
+    kitchen, living room, and bathroom automations used 20.
+
+
+    Session. The optional input_boolean is turned on after the snapshot
+    actions and turned off only after the room is restored. While it is on, a
+    later start does not run the snapshot actions, press the preset buttons,
+    refresh lights, or turn the session lights on again. It plays LedFX only
+    if that player is paused, idle, off, or standby. A return to playing
+    during the settle time cancels the stop, so the scene is not restored and
+    the helper stays on. Leave the helper empty to decide from the LedFX
+    player state alone. A start then runs the snapshot actions whenever LedFX
+    is not already playing.
+
+
+    Start. Power switches and the lights-on list are turned on for every
+    start, including when LedFX is already playing. If the session is off and
+    LedFX is paused, idle, off, or standby, the suspended automations are
+    turned off, the LedFX start actions run, the session helper is turned on,
+    LedFX is turned on when it is off or standby, media_play is called, the
+    preset buttons are pressed, the refresh lights are turned off and on, and
+    the session lights are turned on. If LedFX is unavailable and the ready
+    time is above 0, the start waits for a usable state until that time
+    elapses. Playback start actions run only when a linked player changes to
+    playing. They do not run from the minute check or from Home Assistant
+    start.
+
+
+    Stop. If LedFX is playing or buffering it is paused, and the automation
+    waits the settle time. Kitchen and living room used 2 seconds here. If LedFX was
+    already paused, the room is restored without that wait. If a linked
+    player is playing again after the wait, LedFX is played and the room is
+    left as it is. Otherwise the lights-off list is turned off, the restore
+    scenes are turned on, the power switches are turned off when that option
+    is on, the session helper is turned off, the suspended automations are
+    turned on, and the playback stop actions run. The scene is applied after
+    the lights-off list, so a scene that includes those lights wins.
+
+
+    Missed stop. At second 0 of each minute, the stop sequence runs if every
+    linked player has been stopped for the stop delay and either LedFX is
+    still playing or buffering, or the session helper is on. The minute check
+    does not start LedFX. Reloading automations while a player is already
+    playing does not start LedFX until that player enters playing again.
+
+
+    Home Assistant start. With sync on start enabled, a linked player that is
+    already playing starts LedFX. Playback start actions are skipped. A
+    session helper that is on, with every linked player stopped, restores the
+    room without waiting out the stop delay. With the helper off, a restore
+    on start still requires the stop delay, so a restart during a short gap
+    does not pause LedFX.
+
+
+    Rooms this replaces. Study uses media_player.ledfx_study and
+    media_player.ledfx_ledfx_lan_media_player, turns on
+    switch.5v_80a_psu_smart_plug_v2_ebd5fa_switch and turns it off on stop,
+    runs script.study_light_on_create_scene, presses
+    button.ledfx_ledfx_lan_histograms_and_strips, restores
+    scene.study_scene_tmp, and waits 60 seconds of idle. Kitchen uses
+    media_player.ledfx_kitchen and
+    media_player.ledfx_ledfx_kitchen_lan_media_player, runs
+    script.kitchen_lights_on_create_scene, refreshes
+    light.ledfx_ledfx_kitchen_lan_kitchen_tiles, turns on
+    light.ledfx_ledfx_kitchen_lan_nanoleaf, restores scene.kitchen_scene_tmp,
+    and waits 20 seconds. Its supplies stay on. Living room uses
+    media_player.ledfx_livingroom and
+    media_player.living_room_ledfx_living_room_media_player, runs
+    script.living_room_light_on_create_scene, leaves the supplies on, and
+    waits 20 seconds. Its pause automation does not restore a scene.
+    Bathroom uses media_player.ledfx_bathroom and
+    media_player.ledfx_bathroom_media_player, turns
+    automation.bathroom_occupied and automation.bathroom_unoccupied off while
+    LedFX is running, turns light.bathroom_cabinet on and off, presses
+    button.ledfx_ledfx_kitchen_lan_bathroom_power, and waits 20 seconds.
+  input:
+    players_section:
+      name: Players
+      icon: mdi:music
+      collapsed: false
+      input:
+        music_players:
+          name: Music players
+          description: >-
+            Media players whose playback runs this room's LedFX. LedFX starts
+            when any of them starts playing, and stops only when all of them
+            are stopped. Use the Music Assistant player for the room.
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: media_player
+        ledfx_player:
+          name: LedFX player
+          description: >-
+            LedFX media player to play and pause. This is the LedFX virtual,
+            not the Music Assistant player.
+          selector:
+            entity:
+              filter:
+                - domain: media_player
+        stopped_states:
+          name: Stopped states
+          description: >-
+            States that mean a linked player has stopped. Every linked player
+            must be in one of these before LedFX is paused.
+          default:
+            - idle
+            - paused
+            - "off"
+          selector:
+            select:
+              multiple: true
+              mode: list
+              options:
+                - idle
+                - paused
+                - "off"
+                - standby
+        stop_delay_seconds:
+          name: Stop delay
+          description: >-
+            How long every linked player must stay stopped before LedFX is
+            paused. A return to playing during this time leaves LedFX running.
+          default: 20
+          selector:
+            number:
+              min: 1
+              max: 600
+              step: 1
+              unit_of_measurement: s
+              mode: box
+    session_section:
+      name: Session
+      icon: mdi:timer-outline
+      collapsed: false
+      input:
+        session_helper:
+          name: Session helper
+          description: >-
+            Optional input_boolean. On from the LedFX start until the room is
+            restored. While on, a later start does not snapshot the room
+            again. Leave empty to use the LedFX player state only.
+          default: ""
+          selector:
+            entity:
+              filter:
+                - domain: input_boolean
+        suspend_automations:
+          name: Automations to suspend
+          description: >-
+            Turned off, with their actions stopped, when a LedFX session
+            opens. Turned on when the room is restored. List only automations
+            that should be on while LedFX is stopped. Bathroom uses
+            automation.bathroom_occupied and automation.bathroom_unoccupied.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: automation
+        settle_seconds:
+          name: Settle time
+          description: >-
+            Wait after pausing LedFX before turning lights off and restoring
+            scenes. A return to playing during this wait cancels the stop.
+          default: 2
+          selector:
+            number:
+              min: 0
+              max: 60
+              step: 1
+              unit_of_measurement: s
+              mode: box
+        ledfx_ready_seconds:
+          name: LedFX ready time
+          description: >-
+            If LedFX is unavailable or unknown when playback starts, wait this
+            long for a usable state before giving up. 0 does not wait. Use
+            this when a power switch supplies the LedFX host.
+          default: 0
+          selector:
+            number:
+              min: 0
+              max: 120
+              step: 1
+              unit_of_measurement: s
+              mode: box
+        sync_on_start:
+          name: Sync when Home Assistant starts
+          description: >-
+            When Home Assistant starts, start LedFX if a linked player is
+            already playing, and restore the room if the session helper is on
+            and every linked player is stopped.
+          default: true
+          selector:
+            boolean: {}
+        watchdog:
+          name: Minute check
+          description: >-
+            Each minute, pause LedFX if every linked player has been stopped
+            for the stop delay and LedFX is still running or the session
+            helper is on. Does not start LedFX.
+          default: true
+          selector:
+            boolean: {}
+    start_section:
+      name: When playback starts
+      icon: mdi:play
+      collapsed: false
+      input:
+        power_entities:
+          name: Power switches
+          description: >-
+            Switches turned on whenever a linked player is playing.
+            Study uses the LED supply. Kitchen and living room use their room
+            supplies.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: switch
+        lights_on:
+          name: Lights to turn on
+          description: >-
+            Turned on whenever a linked player is playing, including when
+            LedFX is already playing. Bathroom turns on the cabinet light.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: light
+        ledfx_start_actions:
+          name: LedFX start actions
+          description: >-
+            Run once when a session opens, before LedFX is played. Use the
+            room snapshot script here. Study uses
+            script.study_light_on_create_scene, kitchen uses
+            script.kitchen_lights_on_create_scene, and living room uses
+            script.living_room_light_on_create_scene.
+          default: []
+          selector:
+            action: {}
+        preset_buttons:
+          name: Preset buttons
+          description: >-
+            Pressed after LedFX starts, only when a session opens. Study uses
+            button.ledfx_ledfx_lan_histograms_and_strips. Bathroom uses
+            button.ledfx_ledfx_kitchen_lan_bathroom_power.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: button
+        refresh_lights:
+          name: Lights to refresh
+          description: >-
+            Turned off, then on, after LedFX starts, only when a session
+            opens. Kitchen does this for
+            light.ledfx_ledfx_kitchen_lan_kitchen_tiles.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: light
+        session_lights:
+          name: Lights to turn on with LedFX
+          description: >-
+            Turned on after LedFX starts, only when a session opens. Kitchen
+            uses light.ledfx_ledfx_kitchen_lan_nanoleaf.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: light
+        playback_start_actions:
+          name: Playback start actions
+          description: >-
+            Run after the start sequence, only when a linked player changes
+            to playing. Not run from Home Assistant start or the minute
+            check. Failures are ignored.
+          default: []
+          selector:
+            action: {}
+    stop_section:
+      name: When playback stops
+      icon: mdi:stop
+      collapsed: false
+      input:
+        lights_off:
+          name: Lights to turn off
+          description: >-
+            Turned off after LedFX is paused and the settle time has elapsed,
+            before the scenes are restored. Bathroom turns off the cabinet
+            light.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: light
+        restore_scenes:
+          name: Scenes to restore
+          description: >-
+            Turned on after the lights-off list. Study restores
+            scene.study_scene_tmp and kitchen restores
+            scene.kitchen_scene_tmp. Living room does not restore a scene.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: scene
+        power_off_on_stop:
+          name: Turn power off when stopped
+          description: >-
+            Turns the power switches off after the scenes are restored. Study
+            does this. Kitchen and living room leave the supplies on.
+          default: false
+          selector:
+            boolean: {}
+        playback_stop_actions:
+          name: Playback stop actions
+          description: >-
+            Run after the room is restored. Failures are ignored. Kitchen
+            turns input_boolean.pixoo64_album_art on and restarts the
+            AppDaemon add-on here.
+          default: []
+          selector:
+            action: {}
+
+mode: restart
+
+variables:
+  players: !input music_players
+  ledfx_entity: !input ledfx_player
+  stop_states: !input stopped_states
+  stop_delay_seconds: !input stop_delay_seconds
+  settle_seconds: !input settle_seconds
+  ledfx_ready_seconds: !input ledfx_ready_seconds
+  session_entity: !input session_helper
+  power_entities: !input power_entities
+  lights_on: !input lights_on
+  lights_off: !input lights_off
+  refresh_lights: !input refresh_lights
+  session_lights: !input session_lights
+  preset_buttons: !input preset_buttons
+  restore_scenes: !input restore_scenes
+  suspend_automations: !input suspend_automations
+  power_off_on_stop: !input power_off_on_stop
+  sync_on_start: !input sync_on_start
+  watchdog: !input watchdog
+  session_on: "{{ session_entity | length > 0 and is_state(session_entity, 'on') }}"
+  music_playing: >-
+    {% set ps = players if players is sequence and players is not string else [players] %}
+    {{ ps | select('is_state', 'playing') | list | count > 0 }}
+  players_stopped: >-
+    {% set ps = players if players is sequence and players is not string else [players] %}
+    {% set ns = namespace(ok=ps | count > 0) %}
+    {% for p in ps %}
+      {% if states(p) not in stop_states %}
+        {% set ns.ok = false %}
+      {% endif %}
+    {% endfor %}
+    {{ ns.ok }}
+  stopped_long_enough: >-
+    {% set ps = players if players is sequence and players is not string else [players] %}
+    {% set fired = trigger.entity_id if trigger.id == 'stop' else '' %}
+    {% set ns = namespace(ok=ps | count > 0) %}
+    {% for p in ps %}
+      {% set st = states[p] %}
+      {% if st is none or st.state not in stop_states %}
+        {% set ns.ok = false %}
+      {% elif p != fired %}
+        {% set elapsed = (now() - st.last_changed).total_seconds() if st.last_changed else 0 %}
+        {% if elapsed + 1 < (stop_delay_seconds | float) %}
+          {% set ns.ok = false %}
+        {% endif %}
+      {% endif %}
+    {% endfor %}
+    {{ ns.ok }}
+  ledfx_running: "{{ states(ledfx_entity) in ['playing', 'buffering'] }}"
+  should_stop: >-
+    {{ players_stopped and (session_on or ledfx_running) and (
+         stopped_long_enough or (trigger.id == 'boot' and session_on)
+       ) }}
+  has_power: >-
+    {% set items = power_entities if power_entities is sequence and power_entities is not string else ([] if not power_entities else [power_entities]) %}
+    {{ items | count > 0 }}
+  has_lights_on: >-
+    {% set items = lights_on if lights_on is sequence and lights_on is not string else ([] if not lights_on else [lights_on]) %}
+    {{ items | count > 0 }}
+  has_lights_off: >-
+    {% set items = lights_off if lights_off is sequence and lights_off is not string else ([] if not lights_off else [lights_off]) %}
+    {{ items | count > 0 }}
+  has_refresh: >-
+    {% set items = refresh_lights if refresh_lights is sequence and refresh_lights is not string else ([] if not refresh_lights else [refresh_lights]) %}
+    {{ items | count > 0 }}
+  has_session_lights: >-
+    {% set items = session_lights if session_lights is sequence and session_lights is not string else ([] if not session_lights else [session_lights]) %}
+    {{ items | count > 0 }}
+  has_presets: >-
+    {% set items = preset_buttons if preset_buttons is sequence and preset_buttons is not string else ([] if not preset_buttons else [preset_buttons]) %}
+    {{ items | count > 0 }}
+  has_scenes: >-
+    {% set items = restore_scenes if restore_scenes is sequence and restore_scenes is not string else ([] if not restore_scenes else [restore_scenes]) %}
+    {{ items | count > 0 }}
+  has_suspend: >-
+    {% set items = suspend_automations if suspend_automations is sequence and suspend_automations is not string else ([] if not suspend_automations else [suspend_automations]) %}
+    {{ items | count > 0 }}
+
+triggers:
+  - trigger: state
+    id: start
+    alias: Linked player started
+    entity_id: !input music_players
+    to: playing
+  - trigger: state
+    id: stop
+    alias: Linked player stopped
+    entity_id: !input music_players
+    to: !input stopped_states
+    for:
+      seconds: !input stop_delay_seconds
+  - trigger: time_pattern
+    id: watchdog
+    alias: Minute check
+    minutes: "/1"
+    seconds: 0
+  - trigger: homeassistant
+    id: boot
+    alias: Home Assistant started
+    event: start
+
+conditions:
+  - condition: template
+    value_template: >-
+      {{ (trigger.id == 'start' and music_playing)
+         or (trigger.id == 'boot' and sync_on_start and (music_playing or should_stop))
+         or (trigger.id == 'stop' and should_stop)
+         or (trigger.id == 'watchdog' and watchdog and should_stop) }}
+
+actions:
+  - choose:
+      - alias: Start LedFX for playback
+        conditions:
+          - condition: template
+            value_template: "{{ music_playing }}"
+        sequence:
+          - alias: Turn power on
+            if:
+              - condition: template
+                value_template: "{{ has_power }}"
+            then:
+              - action: switch.turn_on
+                continue_on_error: true
+                target:
+                  entity_id: !input power_entities
+          - alias: Turn playback lights on
+            if:
+              - condition: template
+                value_template: "{{ has_lights_on }}"
+            then:
+              - action: light.turn_on
+                continue_on_error: true
+                target:
+                  entity_id: !input lights_on
+          - alias: Open a LedFX session
+            if:
+              - condition: template
+                value_template: >-
+                  {{ not session_on and states(ledfx_entity) not in ['playing', 'buffering'] }}
+            then:
+              - alias: Wait for LedFX to be available
+                if:
+                  - condition: template
+                    value_template: >-
+                      {{ (ledfx_ready_seconds | int) > 0 and states(ledfx_entity) in ['unavailable', 'unknown'] }}
+                then:
+                  - wait_template: "{{ states(ledfx_entity) not in ['unavailable', 'unknown'] }}"
+                    timeout:
+                      seconds: "{{ ledfx_ready_seconds | int }}"
+                    continue_on_timeout: true
+              - alias: Play LedFX and apply the room preset
+                if:
+                  - condition: template
+                    value_template: >-
+                      {{ states(ledfx_entity) in ['paused', 'idle', 'off', 'standby', 'on'] }}
+                then:
+                  - alias: Suspend room automations
+                    if:
+                      - condition: template
+                        value_template: "{{ has_suspend }}"
+                    then:
+                      - action: automation.turn_off
+                        continue_on_error: true
+                        target:
+                          entity_id: !input suspend_automations
+                        data:
+                          stop_actions: true
+                  - alias: Snapshot the room before LedFX
+                    continue_on_error: true
+                    sequence: !input ledfx_start_actions
+                  - alias: Mark the session open
+                    if:
+                      - condition: template
+                        value_template: "{{ session_entity | length > 0 }}"
+                    then:
+                      - action: input_boolean.turn_on
+                        continue_on_error: true
+                        target:
+                          entity_id: "{{ session_entity }}"
+                  - alias: Turn LedFX on when it is off
+                    if:
+                      - condition: template
+                        value_template: "{{ states(ledfx_entity) in ['off', 'standby'] }}"
+                    then:
+                      - action: media_player.turn_on
+                        continue_on_error: true
+                        target:
+                          entity_id: !input ledfx_player
+                  - action: media_player.media_play
+                    alias: Play LedFX
+                    continue_on_error: true
+                    target:
+                      entity_id: !input ledfx_player
+                  - alias: Press LedFX presets
+                    if:
+                      - condition: template
+                        value_template: "{{ has_presets }}"
+                    then:
+                      - action: button.press
+                        continue_on_error: true
+                        target:
+                          entity_id: !input preset_buttons
+                  - alias: Refresh effect lights
+                    if:
+                      - condition: template
+                        value_template: "{{ has_refresh }}"
+                    then:
+                      - action: light.turn_off
+                        continue_on_error: true
+                        target:
+                          entity_id: !input refresh_lights
+                      - action: light.turn_on
+                        continue_on_error: true
+                        target:
+                          entity_id: !input refresh_lights
+                  - alias: Turn session lights on
+                    if:
+                      - condition: template
+                        value_template: "{{ has_session_lights }}"
+                    then:
+                      - action: light.turn_on
+                        continue_on_error: true
+                        target:
+                          entity_id: !input session_lights
+          - alias: Resume LedFX without a new snapshot
+            if:
+              - condition: template
+                value_template: >-
+                  {{ session_on and states(ledfx_entity) in ['paused', 'idle', 'off', 'standby', 'on'] }}
+            then:
+              - alias: Turn LedFX on when it is off
+                if:
+                  - condition: template
+                    value_template: "{{ states(ledfx_entity) in ['off', 'standby'] }}"
+                then:
+                  - action: media_player.turn_on
+                    continue_on_error: true
+                    target:
+                      entity_id: !input ledfx_player
+              - action: media_player.media_play
+                alias: Play LedFX
+                continue_on_error: true
+                target:
+                  entity_id: !input ledfx_player
+          - alias: Run playback start actions
+            if:
+              - condition: template
+                value_template: "{{ trigger.id == 'start' }}"
+            then:
+              - continue_on_error: true
+                sequence: !input playback_start_actions
+      - alias: Stop LedFX after playback
+        conditions:
+          - condition: template
+            value_template: "{{ should_stop }}"
+        sequence:
+          - alias: Pause LedFX and wait for it to settle
+            if:
+              - condition: template
+                value_template: "{{ states(ledfx_entity) in ['playing', 'buffering'] }}"
+            then:
+              - action: media_player.media_pause
+                continue_on_error: true
+                target:
+                  entity_id: !input ledfx_player
+              - alias: Wait for LedFX to settle
+                if:
+                  - condition: template
+                    value_template: "{{ (settle_seconds | int) > 0 }}"
+                then:
+                  - delay:
+                      seconds: "{{ settle_seconds | int }}"
+          - variables:
+              still_stopped: >-
+                {% set ps = players if players is sequence and players is not string else [players] %}
+                {% set ns = namespace(ok=ps | count > 0) %}
+                {% for p in ps %}
+                  {% if states(p) not in stop_states %}
+                    {% set ns.ok = false %}
+                  {% endif %}
+                {% endfor %}
+                {{ ns.ok }}
+          - alias: Playback resumed during the settle time
+            if:
+              - condition: template
+                value_template: "{{ not still_stopped }}"
+            then:
+              - alias: Play LedFX again
+                if:
+                  - condition: template
+                    value_template: >-
+                      {{ states(ledfx_entity) in ['paused', 'idle', 'off', 'standby', 'on'] }}
+                then:
+                  - action: media_player.media_play
+                    continue_on_error: true
+                    target:
+                      entity_id: !input ledfx_player
+              - stop: Playback resumed
+          - alias: Turn playback lights off
+            if:
+              - condition: template
+                value_template: "{{ has_lights_off }}"
+            then:
+              - action: light.turn_off
+                continue_on_error: true
+                target:
+                  entity_id: !input lights_off
+          - alias: Restore the room
+            if:
+              - condition: template
+                value_template: "{{ has_scenes }}"
+            then:
+              - action: scene.turn_on
+                continue_on_error: true
+                target:
+                  entity_id: !input restore_scenes
+          - alias: Turn power off
+            if:
+              - condition: template
+                value_template: "{{ power_off_on_stop and has_power }}"
+            then:
+              - action: switch.turn_off
+                continue_on_error: true
+                target:
+                  entity_id: !input power_entities
+          - alias: Mark the session closed
+            if:
+              - condition: template
+                value_template: "{{ session_entity | length > 0 }}"
+            then:
+              - action: input_boolean.turn_off
+                continue_on_error: true
+                target:
+                  entity_id: "{{ session_entity }}"
+          - alias: Resume room automations
+            if:
+              - condition: template
+                value_template: "{{ has_suspend }}"
+            then:
+              - action: automation.turn_on
+                continue_on_error: true
+                target:
+                  entity_id: !input suspend_automations
+          - alias: Run playback stop actions
+            continue_on_error: true
+            sequence: !input playback_stop_actions
