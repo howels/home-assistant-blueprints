@@ -1161,7 +1161,25 @@ actions:
                             color_temp_kelvin: >-
                               {% set low = state_attr(repeat.item, 'min_color_temp_kelvin') | int(2000) %}
                               {% set high = state_attr(repeat.item, 'max_color_temp_kelvin') | int(6500) %}
-                              {% set current = state_attr(repeat.item, 'color_temp_kelvin') | int(low) %}
+                              {# A light reports color_temp_kelvin only in colour temperature mode. An RGB or
+                                 RGBW light does not, so the temperature is recovered from rgb_color by
+                                 inverting the formula that Home Assistant uses to convert kelvin to RGB. #}
+                              {% set measured = state_attr(repeat.item, 'color_temp_kelvin') %}
+                              {% set rgb = state_attr(repeat.item, 'rgb_color') %}
+                              {% if measured is number %}
+                                {% set current = measured %}
+                              {% elif rgb is not none and rgb | length == 3 and rgb | max > 0 %}
+                                {% set top = rgb | max %}
+                                {% set red = [rgb[0] * 255 / top, 1] | max %}
+                                {% set blue = rgb[2] * 255 / top %}
+                                {% if blue >= red %}
+                                  {% set current = 100 * ((red / 329.698727446) ** (-1 / 0.1332047592) + 60) %}
+                                {% else %}
+                                  {% set current = 100 * (e ** ((blue + 305.0447927307) / 138.5177312231) + 10) %}
+                                {% endif %}
+                              {% else %}
+                                {% set current = low %}
+                              {% endif %}
                               {{ [[current + (high - low) * dial_pct / 100, low] | max, high] | min | round(0) | int }}
                             transition: 0
                     - conditions: "{{ light_function == 'hue' }}"

@@ -377,6 +377,37 @@ async def test_dial_colour_temperature(hass, freezer, mqtt_mock):
     assert env.calls[-1][1]["color_temp_kelvin"] == 4225
 
 
+async def test_dial_colour_temperature_on_rgb_only_light(hass, freezer, mqtt_mock):
+    """WLED RGB lights report no color_temp_kelvin. The dial reads the temperature back from rgb_color."""
+    from homeassistant.util import color as color_util
+
+    def rgb_for(kelvin):
+        return [round(c) for c in color_util.color_temperature_to_rgb(kelvin)]
+
+    states = {
+        "light.lamp": ("on", {"supported_color_modes": ["rgb"], "color_mode": "rgb", "color_temp_kelvin": None,
+                              "min_color_temp_kelvin": None, "max_color_temp_kelvin": None,
+                              "rgb_color": rgb_for(3000)}),
+    }
+    env = await setup(hass, freezer, mqtt_mock, {"strip_1_dial": "colour_temp"}, light_state=states)
+    await env.fire("cc_016_00", "1")                      # clockwise: colder
+    assert 3200 <= env.calls[-1][1]["color_temp_kelvin"] <= 3260
+    await env.fire("cc_016_00", "65")                     # anticlockwise: warmer
+    assert 2740 <= env.calls[-1][1]["color_temp_kelvin"] <= 2800
+
+    for start in (5000, 6000):                            # the cold side is read from the red channel
+        hass.states.async_set("light.lamp", "on", {**states["light.lamp"][1], "rgb_color": rgb_for(start)})
+        await env.fire("cc_016_00", "65")
+        assert start - 225 - 60 <= env.calls[-1][1]["color_temp_kelvin"] <= start - 225 + 60
+
+
+async def test_dial_colour_temperature_without_any_reading_starts_warm(hass, freezer, mqtt_mock):
+    states = {"light.lamp": ("on", {"supported_color_modes": ["rgb"], "color_mode": "rgb"})}
+    env = await setup(hass, freezer, mqtt_mock, {"strip_1_dial": "colour_temp"}, light_state=states)
+    await env.fire("cc_016_00", "1")
+    assert env.calls[-1][1]["color_temp_kelvin"] == 2225
+
+
 async def test_dial_hue_and_saturation(hass, freezer, mqtt_mock):
     env = await setup(hass, freezer, mqtt_mock, {"strip_1_dial": "hue"})
     await env.fire("cc_016_00", "65")
