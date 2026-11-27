@@ -137,8 +137,15 @@ async def test_hold_only_sensor(hass, freezer):
     await env.setsensor(W, "on")
     await env.tick(2)
     assert env.s("light.lamp_ct").state == "off"       # hold-only cannot start occupancy
+    await env.setsensor(M, "on")
+    await env.tick(2)
+    assert env.s("light.lamp_ct").state == "off"       # the room is not empty, so nothing is restored
+    await env.setsensor(M, "off")
+    await env.setsensor(W, "off")
+    await env.tick(1)
     await enter_default(env)
     await customise(env)
+    await env.setsensor(W, "on")
     await env.setsensor(M, "off")
     await env.tick(60)
     assert env.s("light.lamp_ct").state == "on"        # mmwave still holds the room
@@ -413,14 +420,19 @@ async def test_unavailable_lights_at_entry_retry_on_next_entry(hass, freezer):
     for l in env.lights.values():
         l.set_available(False)
     await env.setsensor(M, "on")
+    # The default scene settles for one second and then the run waits five
+    # seconds for a light. The wait is armed after the first time jump, so a
+    # second jump has to cover it before the next entry can start.
+    await env.tick(2)
     await env.tick(6)
     assert env.store["study"]["vacated"] is True          # nothing came on, so try again next time
+    assert env.s("automation.study_occupancy").attributes["current"] == 0
     for l in env.lights.values():
         l.set_available(True)
     await env.setsensor(M, "off")
     await env.tick(1)
     await env.setsensor(M, "on")
-    await env.tick(2)
+    await env.tick(3)
     assert env.s("light.lamp_ct").attributes["brightness"] == 200
     assert env.store["study"]["vacated"] is False
     assert env.store["study"]["snapshot"]["light.lamp_ct"]["brightness"] == 200
@@ -482,6 +494,61 @@ async def test_unavailable_sensor_does_not_block_other_entry_sensor(hass, freeze
     await env.setsensor(M, "on")
     await env.tick(2)
     assert env.s("light.lamp_ct").state == "on"
+    assert env.store["study"]["vacated"] is False
+
+
+async def test_motion_while_occupancy_on_does_not_restore(hass, freezer):
+    """PIR off then on must not apply the snapshot while occupancy is still on."""
+    env = await build(
+        hass, freezer,
+        inputs={"sensors": [M, W], "hold_only_sensors": []},
+        restore=raw_record({"study": {
+            "snapshot": {"light.lamp_ct": {"state": "on", "brightness": 200,
+                         "color_mode": "color_temp", "color_temp_kelvin": 2700}},
+            "saved_at": "2026-11-27T03:07:29+00:00", "vacated": True}}),
+    )
+    await env.setsensor(W, "on")
+    await env.tick(2)
+    assert env.s("light.lamp_ct").attributes["brightness"] == 200
+    assert env.store["study"]["vacated"] is False
+    await hass.services.async_call("light", "turn_on", {"entity_id": "light.lamp_ct", "brightness": 10}, blocking=True)
+    hass.bus.async_fire("occupancy_room_update", {"room": "study", "vacated": True})
+    await env.pump()
+    await env.setsensor(M, "off")
+    await env.tick(1)
+    await env.setsensor(M, "on")
+    await env.tick(2)
+    assert env.s("light.lamp_ct").attributes["brightness"] == 10
+    assert env.store["study"]["vacated"] is True
+
+
+async def test_all_off_snapshot_uses_default_scene(hass, freezer):
+    env = await build(hass, freezer, restore=raw_record({"study": {
+        "snapshot": {
+            "light.lamp_ct": {"state": "off"},
+            "light.lamp_hs": {"state": "off"},
+            "light.lamp_bri": {"state": "off"},
+        },
+        "saved_at": "2026-11-27T03:07:29+00:00", "vacated": True}}))
+    await enter_default(env)
+    assert env.s("light.lamp_ct").state == "on"
+    assert env.s("light.lamp_ct").attributes["brightness"] == 100
+    assert env.s("light.lamp_bri").state == "on"
+    assert env.store["study"]["vacated"] is False
+    assert env.store["study"]["snapshot"]["light.lamp_ct"]["state"] == "off"
+
+
+async def test_unavailable_saved_on_light_uses_default_scene(hass, freezer):
+    env = await build(hass, freezer, restore=raw_record({"study": {
+        "snapshot": {
+            "light.lamp_ct": {"state": "off"},
+            "light.lamp_hs": {"state": "on", "brightness": 80, "color_mode": "hs", "hs_color": [120, 50]},
+        },
+        "saved_at": "2026-11-27T03:07:29+00:00", "vacated": True}}))
+    env.lights["light.lamp_hs"].set_available(False)
+    await enter_default(env)
+    assert env.s("light.lamp_ct").state == "on"
+    assert env.s("light.lamp_ct").attributes["brightness"] == 100
     assert env.store["study"]["vacated"] is False
 
 

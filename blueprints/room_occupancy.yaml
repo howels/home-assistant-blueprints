@@ -10,27 +10,33 @@ blueprint:
 
 
     Entry. An entry occurs when an entry sensor changes from off to on while
-    the saved record says the room is vacated. Transitions from unavailable or
-    unknown are ignored, so a rebooting sensor does not trigger entry. It
-    restores the lights only if the time is inside the active hours, at least
-    one selected person is home, and the extra entry conditions pass. If a
-    snapshot is saved for the room, scene.apply applies it. Otherwise, if the
-    runtime scene scene.<room>_scene_tmp exists, it is turned on. Otherwise the
-    default scene is turned on, and after the settle time the room is
-    snapshotted into scene.<room>_scene_tmp. The room counts as restored only
-    if a light, switch or fan among the entities to save is on within 5
-    seconds. If not, for example because the lights were unavailable, vacated
-    stays true and the next entry tries again. An entry refused by the hours or
-    the people check is tried again when the active hours open and when a
-    selected person arrives home, if a sensor is on then.
+    the saved record says the room is vacated, and every other entry sensor and
+    hold-only sensor is off. The room was empty. A sensor that is already on,
+    including occupancy that stays on while a motion sensor flickers, blocks
+    the restore. Transitions from unavailable or unknown are ignored, so a
+    rebooting sensor does not trigger entry. It restores the lights only if
+    the time is inside the active hours, at least one selected person is home,
+    and the extra entry conditions pass. scene.apply applies the saved snapshot
+    only when that snapshot has a light, switch or fan on and that entity is
+    available. A snapshot that is empty or records every light off is not
+    applied. If there is no saved snapshot and the runtime scene
+    scene.<room>_scene_tmp exists, it is turned on. Otherwise the default scene
+    is turned on, and after the settle time the room is snapshotted into
+    scene.<room>_scene_tmp. The room counts as restored only if a light, switch
+    or fan among the entities to save is on within 5 seconds. If not, for
+    example because the lights were unavailable, vacated stays true and the
+    next entry tries again. An entry refused by the hours or the people check
+    is tried again when the active hours open and when a selected person
+    arrives home, if a sensor is on then.
 
 
     Vacancy. When every entry sensor and hold-only sensor reports off for the
     clear delay, the automation reads the states of the snapshot entities. If
-    any sensor is unavailable or unknown, the room does not vacate. If any
-    light, switch or fan among the snapshot entities is on and the snapshot
-    conditions pass, it saves those states, recreates scene.<room>_scene_tmp
-    from them, and turns the lights off. The extra vacant actions run last.
+    any sensor is unavailable or unknown, the room does not vacate. It saves a
+    snapshot only when a light, switch or fan is on and the snapshot conditions
+    pass. With every one of those off, the saved snapshot is left unchanged.
+    When it does save, it recreates scene.<room>_scene_tmp from those states
+    and turns the lights off. The extra vacant actions run last.
 
 
     Why the order holds. The automation runs in queued mode. A second entry
@@ -358,6 +364,19 @@ actions:
       saved: "{{ record.get('snapshot') or {} }}"
       vacated: "{{ record.get('vacated', true) }}"
       entry_on: "{{ entry_sensors | select('is_state', 'on') | list | count > 0 }}"
+      # A saved snapshot is applied only when it would turn an available light,
+      # switch or fan on. An empty snapshot, or one that only records those
+      # entities off, falls through to the default scene.
+      snapshot_restorable: >-
+        {% set ns = namespace(ok=false) %}
+        {% for e, v in saved.items() %}
+          {% set st = v.state if v is mapping else none %}
+          {% if e is match('^(light|switch|fan)[.]') and st == 'on'
+                and states(e) not in ['unavailable', 'unknown'] %}
+            {% set ns.ok = true %}
+          {% endif %}
+        {% endfor %}
+        {{ ns.ok }}
       all_clear: >-
         {% set watched = entry_sensors + hold_sensors %}
         {{ watched | count > 0
@@ -398,12 +417,20 @@ actions:
               room: "{{ room }}"
               entities: "{{ snapshot_entities }}"
 
-      # Someone is in a room that the vacancy run emptied.
+      # Someone entered a room that the vacancy run emptied. A motion edge
+      # while occupancy or another sensor is still on is not an entry: the
+      # room was not empty, so the saved snapshot is left alone.
       - alias: Entry
         conditions:
           - condition: template
             value_template: >-
               {{ trigger.id == 'enter' or (trigger.id == 'gate' and entry_on) }}
+          - condition: template
+            value_template: >-
+              {% set fired = trigger.entity_id if trigger.entity_id is string else '' %}
+              {% set others = (entry_sensors + hold_sensors) | reject('eq', fired) | list %}
+              {{ trigger.id != 'enter'
+                 or others | select('is_state', 'on') | list | count == 0 }}
           - condition: template
             value_template: "{{ vacated }}"
           - condition: time
@@ -420,7 +447,7 @@ actions:
               - alias: Apply the saved snapshot
                 conditions:
                   - condition: template
-                    value_template: "{{ saved | length > 0 }}"
+                    value_template: "{{ snapshot_restorable }}"
                 sequence:
                   - action: scene.apply
                     continue_on_error: true
@@ -429,7 +456,9 @@ actions:
               - alias: Turn on the runtime scene
                 conditions:
                   - condition: template
-                    value_template: "{{ state_attr('scene.' ~ scene_id, 'entity_id') is not none }}"
+                    value_template: >-
+                      {{ saved | length == 0
+                         and state_attr('scene.' ~ scene_id, 'entity_id') is not none }}
                 sequence:
                   - action: scene.turn_on
                     continue_on_error: true
