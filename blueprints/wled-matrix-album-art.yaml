@@ -32,6 +32,14 @@ blueprint:
     Assistant, for example https://ha.example.com.
 
 
+    Settle time. A change of state or picture on a watched player starts a
+    run, and the run waits for the settle time before it does anything. A
+    further change during the wait restarts the run. Some players report the
+    previous track again for a moment after a track change, so the panels
+    would show the new picture, the old picture, and the new picture again.
+    With the wait, only the last report is sent. The picture is read after
+    the wait, so it is the picture that the player reports then.
+
     A state change starts a run. The run clears each stream, sends the
     picture once to each panel, and waits while the active player stays
     playing. A new picture restarts the run and sends the new picture without
@@ -157,6 +165,23 @@ blueprint:
           default: true
           selector:
             boolean: {}
+        settle_seconds:
+          name: Settle time
+          description: >-
+            Seconds to wait after a state or picture change before anything is
+            sent. A change on a watched player during that time restarts the
+            wait. Some players report the previous track again for a moment
+            after a track change, and each report would otherwise send the
+            old picture to the panels. Only the last report is sent. 0 sends
+            at once.
+          default: 2
+          selector:
+            number:
+              min: 0
+              max: 10
+              step: 0.5
+              unit_of_measurement: s
+              mode: box
         send_timeout:
           name: Send timeout
           description: >-
@@ -320,6 +345,7 @@ variables:
   light_session: !input light_session
   clear_before_send: !input clear_before_send
   send_timeout: !input send_timeout
+  settle_seconds: !input settle_seconds
   clear_first: "{{ (clear_before_send | bool(false)) and trigger.id == 'state' }}"
   active: >-
     {% set players = [primary] + (fallbacks | default([]) | list) %}
@@ -382,6 +408,12 @@ variables:
     {{ ns.items }}
 
 actions:
+  - if:
+      - condition: template
+        value_template: "{{ settle_seconds | float(0) > 0 }}"
+    then:
+      - delay:
+          seconds: "{{ settle_seconds | float(0) }}"
   - if:
       - condition: template
         value_template: "{{ targets | length == 0 }}"

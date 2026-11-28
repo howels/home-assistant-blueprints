@@ -65,6 +65,7 @@ async def setup(hass, panels, fallbacks=None, prefix="https://ha.example", extra
         "fallback_players": fallbacks or [],
         "picture_url_prefix": prefix,
         "panels": panels,
+        "settle_seconds": 0,
     }
     inputs.update(extra or {})
     assert await async_setup_component(
@@ -323,3 +324,35 @@ async def test_session_restores_only_lights_that_were_off(hass, freezer):
     assert hass.states.get("light.owned").state == "off"
     assert hass.states.get("light.kept").state == "on"
     assert hass.states.get("input_boolean.matrices").state == "off"
+
+
+async def test_a_track_change_reported_twice_is_sent_once_after_it_settles(hass, freezer):
+    calls = await setup(hass, [panel("matrix-a", "panel-a.example")], extra={"settle_seconds": 2})
+    hass.states.async_set(PRIMARY, "playing", {"entity_picture": "/art/new"})
+    await pump(hass)
+    # The player reports the previous track again, then the new track once more.
+    hass.states.async_set(PRIMARY, "playing", {"entity_picture": "/art/old"})
+    await pump(hass)
+    hass.states.async_set(PRIMARY, "playing", {"entity_picture": "/art/new"})
+    await pump(hass)
+    async_fire_time_changed(hass)
+    await pump(hass)
+    assert sends(calls) == []
+
+    freezer.tick(timedelta(seconds=3))
+    async_fire_time_changed(hass)
+    await pump(hass)
+    assert [item["image_url"] for item in sends(calls)] == ["https://ha.example/art/new"]
+
+
+async def test_picture_is_read_after_the_settle_time(hass, freezer):
+    calls = await setup(hass, [panel("matrix-a", "panel-a.example")], extra={"settle_seconds": 2})
+    hass.states.async_set(PRIMARY, "playing", {"entity_picture": "/art/first"})
+    await pump(hass)
+    hass.states.async_set(PRIMARY, "playing", {"entity_picture": "/art/second"})
+    await pump(hass)
+    freezer.tick(timedelta(seconds=3))
+    async_fire_time_changed(hass)
+    await pump(hass)
+
+    assert [item["image_url"] for item in sends(calls)] == ["https://ha.example/art/second"]
